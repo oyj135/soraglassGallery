@@ -1,0 +1,7 @@
+form[data-sgga-config] .sgga-secret-control{display:flex;align-items:center;gap:8px;max-width:100%}
+form[data-sgga-config] .sgga-secret-control input{flex:1;min-width:0;margin:0!important}
+form[data-sgga-config] [data-secret-toggle]{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:40px;min-height:40px;padding:8px;border:1px solid currentColor;border-radius:6px;background:transparent;color:inherit;cursor:pointer;opacity:.8}
+form[data-sgga-config] [data-secret-toggle][aria-pressed=true]{opacity:1}
+form[data-sgga-config] [data-secret-toggle]:focus-visible{outline:2px solid currentColor;outline-offset:3px}
+form[data-sgga-config] .sgga-config-status{margin:16px 0;line-height:1.6;color:inherit;overflow-wrap:anywhere}
+form[data-sgga-config] .sgga-config-status[data-error=true]{color:#b84d45}
