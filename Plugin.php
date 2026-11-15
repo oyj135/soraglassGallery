@@ -10,7 +10,7 @@ require_once __DIR__ . '/bootstrap.php';
  * 光影画廊：相册管理与可扩展云存储上传
  * @package SoraglassGallery
  * @author Soraglass
- * @version 1.1.2
+ * @version 1.2.0
  * @since 1.3.0
  * @link https://typecho.org
  */
@@ -43,7 +43,7 @@ final class Plugin implements PluginInterface
             'bucket' => ['Bucket 名称', 'COS 包含 APPID，例如 photos-1250000000；OSS 填存储空间名称。'],
             'region' => ['Region', 'COS 例如 ap-guangzhou；OSS 例如 cn-hangzhou。'],
             'endpoint' => ['上传 Endpoint（可选）', '留空使用厂商默认端点；可填写云服务主机名或完整 HTTPS 地址。'],
-            'domain' => ['图片访问域名（可选）', '填写 CDN / 自定义域名即可，自动补全 https://；留空使用存储桶公共地址。影响后续上传的图片地址。'],
+            'domain' => ['图片访问域名（可选）', '填写 CDN / 自定义域名或带路径的 HTTPS 前缀。同一存储目标的历史照片也使用此域名；CDN 需转发云端图片处理查询参数。'],
             'prefix' => ['对象目录', '默认 gallery，按上传年月生成唯一路径。'],
             'timeout' => ['上传超时（秒）', '30–3600，默认 300；还需匹配 PHP / Nginx 配置。'],
         ];
@@ -59,6 +59,7 @@ final class Plugin implements PluginInterface
         }
         $form->setAttribute('data-sgga-config', '');
         $form->setAttribute('data-endpoint', \Widget\Security::alloc()->getIndex('/action/sg-gallery'));
+        $form->setAttribute('data-csrf', \Widget\Security::alloc()->getToken('SoraglassGallery/admin'));
         $assets = \Typecho\Common::url('SoraglassGallery/assets/', \Widget\Options::alloc()->pluginUrl);
         $form->addItem(new \Typecho\Widget\Helper\Layout('link', ['rel' => 'stylesheet', 'href' => $assets . 'config.css?v=' . filemtime(__DIR__ . '/assets/config.css')]));
         foreach (['config.js', 'admin-compat.js'] as $file) {

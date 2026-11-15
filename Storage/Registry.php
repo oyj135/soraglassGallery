@@ -40,7 +40,7 @@ final class Registry
         require_once $file;
     }
 
-    public static function publicUrl(array $config, string $key): string
+    public static function publicUrl(array $config, string $key, ?array $size = null): string
     {
         $domain = rtrim($config['domain'] ?? '', '/');
         if ($domain === '') {
@@ -48,6 +48,11 @@ final class Registry
                 ? 'https://' . $config['bucket'] . '.cos.' . $config['region'] . '.myqcloud.com'
                 : 'https://' . $config['bucket'] . '.oss-' . $config['region'] . '.aliyuncs.com';
         }
-        return $domain . '/' . implode('/', array_map('rawurlencode', explode('/', $key)));
+        $url = $domain . '/' . implode('/', array_map('rawurlencode', explode('/', ltrim($key, '/'))));
+        if (!$size) { return $url; }
+        [$width, $height] = array_map(static fn($v) => max(1, min(4096, (int) $v)), $size);
+        if (($config['provider'] ?? '') === 'cos') { return $url . '?imageMogr2/thumbnail/' . $width . 'x' . $height; }
+        if (($config['provider'] ?? '') === 'oss') { return $url . '?x-oss-process=image/resize,m_lfit,w_' . $width . ',h_' . $height . ',limit_1'; }
+        return $url;
     }
 }

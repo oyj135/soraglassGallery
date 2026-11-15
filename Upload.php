@@ -61,10 +61,12 @@ final class Upload
             if ($existing !== null) { $this->verify($photo, $existing); }
             else {
                 $writing = true;
+                $this->repo->phase($taskId, (int) $claimed['attempt'], 'writing');
                 $this->driver->upload($file, $photo['object_key'], $mime, $photo['hash']);
+                $this->repo->phase($taskId, (int) $claimed['attempt'], 'verifying');
                 $this->verify($photo, $this->driver->inspect($photo['object_key']));
             }
-            $this->repo->update('photos', $photo['id'], ['mime' => $mime, 'width' => $image[0] ?? 0, 'height' => $image[1] ?? 0, 'preview' => $preview]);
+            $this->repo->update('photos', $photo['id'], ['mime' => $mime, 'width' => $image[0] ?? 0, 'height' => $image[1] ?? 0, 'preview' => $preview, 'thumb' => $preview ? $this->driver->thumbnail($photo['object_key']) : $this->driver->url($photo['object_key'])]);
             $this->repo->finish($taskId, (int) $claimed['attempt'], 'uploaded');
         } catch (\Throwable $e) {
             // A lost response does not mean the write failed. Verify the same key
@@ -94,7 +96,14 @@ final class Upload
     public function recover(string $taskId): void
     {
         $task = $this->repo->get('tasks', $taskId); $photo = $this->target($task);
-        $claimed = $this->repo->claim($taskId, (int) $this->config['timeout']);
+        if ($task['state'] === 'uploaded' || ($task['state'] === 'uploading' && (int) $task['lease'] >= time())) { return; }
+        try { $claimed = $this->repo->claim($taskId, (int) $this->config['timeout'], 'verifying'); }
+        catch (\RuntimeException $e) {
+            $status = $this->repo->uploadStatus($taskId);
+            if ($status['state'] === 'uploaded' || $status['state'] === 'uploading') { return; }
+            throw $e;
+        }
+        @set_time_limit((int) $this->config['timeout'] + 30);
         try {
             $object = $this->driver->inspect($photo['object_key']);
             if ($object === null) { $this->repo->finish($taskId, (int) $claimed['attempt'], 'failed', '已确认云端无此对象，请重新选择原照片重试'); return; }

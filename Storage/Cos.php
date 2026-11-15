@@ -7,7 +7,7 @@ final class Cos implements Driver
     public function __construct(private array $config)
     {
         Registry::sdk();
-        $options = ['region' => $config['region'], 'scheme' => 'https', 'credentials' => ['secretId' => $config['keyId'], 'secretKey' => $config['keySecret']], 'timeout' => (int) $config['timeout'], 'connect_timeout' => 15, 'retry' => 1];
+        $options = ['region' => $config['region'], 'scheme' => 'https', 'credentials' => ['secretId' => $config['keyId'], 'secretKey' => $config['keySecret']], 'timeout' => (int) $config['timeout'], 'connect_timeout' => 15, 'retry' => empty($config['inspection']) ? 1 : 0];
         if ($config['endpoint'] !== '') { $options['domain'] = parse_url($config['endpoint'], PHP_URL_HOST); }
         $this->client = new \Qcloud\Cos\Client($options);
     }
@@ -34,11 +34,11 @@ final class Cos implements Driver
             return ['bytes' => (int) $r['ContentLength'], 'hash' => $r['Metadata']['sg-sha256'] ?? '', 'mime' => $r['ContentType'] ?? ''];
         } catch (\Qcloud\Cos\Exception\ServiceResponseException $e) {
             // HeadObject uses an empty 404 response for a missing key, but not for auth failures.
-            if ((string) $e->getExceptionCode() === 'NoSuchKey' || ((string) $e->getExceptionCode() === '404' && $e->getResponse()->getStatusCode() === 404)) { return null; }
+            if ((string) $e->getExceptionCode() === 'NoSuchKey' || ((string) $e->getExceptionCode() === '404' && $e->getResponse()?->getStatusCode() === 404)) { return null; }
             throw $e;
         }
     }
     public function delete(string $key): void { $this->client->deleteObject(['Bucket' => $this->config['bucket'], 'Key' => $key]); }
     public function url(string $key): string { return Registry::publicUrl($this->config, $key); }
-    public function thumbnail(string $key): string { return $this->url($key); }
+    public function thumbnail(string $key): string { return Registry::publicUrl($this->config, $key, [800, 1000]); }
 }

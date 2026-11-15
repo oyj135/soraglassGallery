@@ -148,6 +148,7 @@ try {
     Settings::save(array_merge($masked, ['provider'=>'oss','bucket'=>'photos','region'=>'cn-hangzhou']));
     check(Settings::read()['keyId'] === '' && Settings::read()['keySecret'] === '', 'switching provider does not reuse previous credentials');
     require __DIR__ . '/cos-protocol.php';
+    require __DIR__ . '/regressions.php';
     echo "PASS: $count assertions (isolated Typecho SQLite, fake cloud and real COS SDK with simulated HTTP; no live cloud requests)\n";
 } finally {
     foreach ([$file, $photoFile ?? '', $wrong ?? ''] as $tmp) { if ($tmp && is_file($tmp)) { @unlink($tmp); } }

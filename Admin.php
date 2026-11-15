@@ -16,7 +16,7 @@ final class Admin
         ob_start();
         ?>
         <link rel="stylesheet" href="<?php echo $e($assets . 'admin.css?v=' . hash_file('sha256', __DIR__ . '/assets/admin.css')); ?>">
-        <section class="sgga" data-sgga data-endpoint="<?php echo $e($url); ?>" data-upload-timeout="<?php echo (int) $settings['timeout']; ?>">
+        <section class="sgga" data-sgga data-endpoint="<?php echo $e($url); ?>" data-csrf="<?php echo $e(\Widget\Security::alloc()->getToken('SoraglassGallery/admin')); ?>" data-upload-timeout="<?php echo (int) $settings['timeout']; ?>">
           <div class="sgga-heading"><div><h2>光影画廊</h2><p>管理相册与照片，收藏每一次光影。</p></div><a href="<?php echo $e($config); ?>">云存储设置 ↗</a></div>
           <?php if (!$configured): ?><p class="sgga-error">请先在插件配置中填写云存储与凭据，再上传照片。</p><?php endif; ?>
           <div id="sgga-alert" class="sgga-alert" role="status" aria-live="polite" data-alert hidden></div>
@@ -26,7 +26,7 @@ final class Admin
           <div class="sgga-albums" data-albums aria-label="相册设置"><p>正在读取相册…</p></div>
           <p class="sgga-sidebar-note">相册主题写在简介里。照片上传后自动公开。</p></aside><div class="sgga-library">
           <div class="sgga-upload" data-drop>
-            <div class="sgga-toolbar"><div><h3>添加照片</h3><p>可一次选择多张。拍摄日期选填，上传后也能修改。</p></div><button type="button" data-pick>选择本机照片</button></div>
+            <div class="sgga-toolbar"><div><h3>添加照片</h3><p>支持分次追加照片，重复文件会自动略过。拍摄日期选填。</p></div><button type="button" data-pick>选择本机照片</button></div>
             <input class="sgga-file" type="file" multiple data-files aria-label="选择本机照片" tabindex="-1">
             <fieldset data-upload-fields class="sgga-fields"><label>所属相册<select data-upload-album></select></label><div class="sgga-field"><label for="sgga-upload-date">拍摄日期</label><div class="sgga-date"><input id="sgga-upload-date" type="date" data-upload-date aria-describedby="sgga-alert"><button type="button" data-date-open aria-label="选择拍摄日期">日历</button><button type="button" data-date-clear aria-label="清空拍摄日期">清空</button></div></div></fieldset>
             <div class="sgga-queue" data-queue aria-live="polite"></div>

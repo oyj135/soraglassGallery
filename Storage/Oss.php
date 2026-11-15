@@ -13,6 +13,7 @@ final class Oss implements Driver
         $cfg->setRegion($config['region']);
         $cfg->setCredentialsProvider(new SDK\Credentials\StaticCredentialsProvider($config['keyId'], $config['keySecret']));
         $cfg->setConnectTimeout(15); $cfg->setReadwriteTimeout((float) $config['timeout']);
+        if (!empty($config['inspection'])) { $cfg->setRetryMaxAttempts(1); }
         if ($config['endpoint'] !== '') { $cfg->setEndpoint($config['endpoint']); }
         $this->client = new SDK\Client($cfg);
     }
@@ -35,5 +36,5 @@ final class Oss implements Driver
     }
     public function delete(string $key): void { $this->client->deleteObject(new SDK\Models\DeleteObjectRequest(bucket: $this->config['bucket'], key: $key)); }
     public function url(string $key): string { return Registry::publicUrl($this->config, $key); }
-    public function thumbnail(string $key): string { return $this->url($key); }
+    public function thumbnail(string $key): string { return Registry::publicUrl($this->config, $key, [800, 1000]); }
 }

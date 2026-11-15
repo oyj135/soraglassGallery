@@ -36,12 +36,33 @@ final class Settings
 
     public static function profile(array $settings): string
     {
-        return hash('sha256', implode('|', [$settings['provider'], $settings['bucket'], $settings['region'], $settings['endpoint']]));
+        return hash('sha256', implode('|', [$settings['provider'] ?? '', $settings['bucket'] ?? '', $settings['region'] ?? '', $settings['endpoint'] ?? '']));
     }
 
     public static function snapshot(array $settings): array
     {
         return array_intersect_key($settings, array_flip(['provider', 'bucket', 'region', 'endpoint', 'domain', 'prefix', 'profile']));
+    }
+
+    /** Object key + frozen target are canonical; delivery domain is mutable for that target. */
+    public static function photoUrls(array $photo, array $current): array
+    {
+        $snapshot = is_array($photo['storage']) ? $photo['storage'] : (json_decode($photo['storage'], true) ?: []);
+        if (!empty($photo['object_key']) && in_array($snapshot['provider'] ?? '', ['cos', 'oss'], true) && !empty($snapshot['bucket']) && !empty($snapshot['region'])) {
+            $delivery = ($snapshot['profile'] ?? self::profile($snapshot)) === self::profile($current) ? $current : $snapshot;
+            $photo['url'] = Registry::publicUrl($delivery, $photo['object_key']);
+            $photo['thumb'] = Registry::publicUrl($delivery, $photo['object_key'], !empty($photo['preview']) ? [800, 1000] : null);
+        } else { $photo['thumb'] = $photo['thumb'] ?: $photo['url']; }
+        return $photo;
+    }
+
+    public static function status(): array
+    {
+        $settings = self::read(true); $result = array_intersect_key($settings, self::defaults());
+        unset($result['keyId'], $result['keySecret']);
+        $result['credentialsSet'] = ['keyId' => self::hasCredential('keyId'), 'keySecret' => self::hasCredential('keySecret')];
+        $result['requestId'] = $settings['_saveRequest'] ?? '';
+        return $result;
     }
 
     public static function normalize(array $input): array
@@ -87,13 +108,12 @@ final class Settings
                 $settings[$field] = $old['provider'] === $settings['provider'] ? $old[$field] : '';
             } else { $settings[$field] = self::encrypt($value); }
         }
+        $settings['_saveRequest'] = preg_match('/^[a-f0-9]{32}$/', (string) ($input['_requestId'] ?? '')) ? $input['_requestId'] : '';
         $db = \Typecho\Db::get();
         $row = $db->fetchRow($db->select('name')->from('table.options')->where('name = ?', 'plugin:SoraglassGallery')->where('user = ?', 0));
         if ($row) { $db->query($db->update('table.options')->rows(['value' => json_encode($settings)])->where('name = ?', 'plugin:SoraglassGallery')->where('user = ?', 0)); }
         else { $db->query($db->insert('table.options')->rows(['name' => 'plugin:SoraglassGallery', 'user' => 0, 'value' => json_encode($settings)])); }
-        unset($settings['keyId'], $settings['keySecret']);
-        $settings['credentialsSet'] = ['keyId' => self::hasCredential('keyId'), 'keySecret' => self::hasCredential('keySecret')];
-        return $settings;
+        return self::status();
     }
 
     public static function validate(array $settings): void

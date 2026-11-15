@@ -9,8 +9,8 @@
     const notice = (text, tone = 'info', source = '') => { $('[data-alert]').textContent = text; $('[data-alert]').hidden = !text; $('[data-alert]').dataset.tone = tone; $('[data-alert]').dataset.source=source; };
     let albums = [], photos = [], page = 1, pages = 1, queue = [], busy = false, batchFinished = false, editing = null, refreshVersion = 0, fieldId = 0;
     const dialog = $('[data-editor]');
-    const url = op => { const u = new URL(root.dataset.endpoint, location.href); u.searchParams.set('op', op); return u; };
-    const body = values => { const f = new FormData(); Object.entries(values).forEach(([k,v]) => f.append(k,v)); return f; };
+    const url = op => { const u = new URL(root.dataset.endpoint, location.href); u.searchParams.set('op', op); if(root.dataset.csrf)u.searchParams.set('_',root.dataset.csrf); return u; };
+    const body = values => { const f = new FormData(); Object.entries(values).forEach(([k,v]) => f.append(k,v)); if(root.dataset.csrf)f.set('_',root.dataset.csrf); return f; };
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const size = bytes => Number(bytes) < 1048576 ? `${Math.ceil(Number(bytes)/1024)} KB` : `${(Number(bytes)/1048576).toFixed(1)} MB`;
     // Only the gallery workspace breaks out of the narrow theme settings form.
@@ -35,13 +35,13 @@
     new MutationObserver(layout).observe(document.documentElement, {attributes:true, attributeFilter:['class','data-theme','style']});
     async function api(op, values, query = {}) {
       const u = url(op); Object.entries(query).forEach(([k,v]) => u.searchParams.set(k,v));
-      const abort = new AbortController(); const timer = setTimeout(() => abort.abort(), 20000);
+      const abort = new AbortController(); const timer = setTimeout(() => abort.abort(), op==='recover' ? 120000 : 20000);
       try {
         const res = await fetch(u, {method:values ? 'POST' : 'GET', body:values ? body(values) : undefined, credentials:'same-origin', signal:abort.signal});
         let data; try { data = await res.json(); } catch { throw new Error('服务器响应不完整，请刷新后重试。'); }
         if (!res.ok || !data.ok) throw new Error(data.error || '请求失败，请重试。');
         return data.data;
-      } catch (e) { if (e.name === 'AbortError') throw new Error('请求超时，请刷新后检查记录。'); throw e; }
+      } catch (e) { if (e.name === 'AbortError') { const error=new Error('请求等待超时，结果待核查。');error.uncertain=true;throw error; } throw e; }
       finally { clearTimeout(timer); }
     }
     function options(select, selected = '', all = false) {
@@ -69,7 +69,7 @@
         options($('[data-filter]'), filter, true);
         $('[data-albums]').replaceChildren(...albums.map(a => {
           const row=el('div',null,'sgga-album-row');
-          const b=button('',()=>{$('[data-filter]').value=a.id;page=1;refresh();},'sgga-album');
+          const b=button('',()=>{$('[data-filter]').value=a.id;$('[data-upload-album]').value=a.id;page=1;refresh();},'sgga-album');
           b.dataset.albumId=a.id;b.setAttribute('aria-current',filter===a.id?'true':'false');b.append(el('strong',a.title));if(+a.featured)b.append(el('small','精选'));
           const edit=button('⋯',()=>editAlbum(a),'sgga-album-edit');edit.setAttribute('aria-label',`编辑相册：${a.title}`);
           row.append(b,edit);return row;
@@ -89,8 +89,8 @@
     function preview(p, cls) {
       const box = el('div',null,cls);
       if (+p.preview && p.state === 'uploaded') {
-        const img = el('img'); img.src = p.url; img.alt = p.caption || p.name; img.loading = 'lazy';
-        img.addEventListener('error',()=>box.replaceChildren(el('span','预览暂不可用，可打开原文件'))); box.append(img);
+        const img = el('img'); img.src = p.thumb || p.url; img.alt = p.caption || p.name; img.loading = 'lazy';
+        let fallback=false;img.addEventListener('error',()=>{if(!fallback&&img.src!==p.url){fallback=true;img.src=p.url;}else box.replaceChildren(el('span','预览暂不可用，可打开原文件'));}); box.append(img);
       } else box.append(el('span',p.state === 'uploaded' ? '原文件收藏' : '等待照片上传'));
       return box;
     }
@@ -99,7 +99,7 @@
       const list = el('dl'); const state = effectiveState(p);
       const values = {
         '文件名':p.name, '上传状态':`${states[state] || state}${state === 'uploaded' && +p.published ? '，已公开展示' : ''}`,
-        '上传时间':new Date(+p.created*1000).toLocaleString('zh-CN'), '文件大小':size(p.bytes),
+        '上传完成时间':+p.finished_at ? new Date(+p.finished_at*1000).toLocaleString('zh-CN') : '尚未完成或历史记录未记录', '记录创建时间':new Date(+p.created*1000).toLocaleString('zh-CN'), '文件大小':size(p.bytes),
         '云存储':`${p.storage.provider?.toUpperCase() || ''} / ${p.storage.bucket || ''}`, '存储路径':p.object_key
       };
       Object.entries(values).forEach(([k,v]) => list.append(el('dt',k),el('dd',v)));
@@ -121,13 +121,19 @@
       if (p.task?.error) info.append(el('p',p.task.error,'sgga-error'));
       if (p.task && state !== 'uploaded' && state !== 'uploading') {
         const actions = el('div',null,'sgga-retry');
-        actions.append(button('核查云端', async () => { await api('recover',{task:p.task.id}); notice('已核查云端，记录已更新。'); await refresh(); }));
+        actions.append(button('核查云端', async () => {
+          let result;
+          try { result=await api('recover',{task:p.task.id}); }
+          catch(e){if(!e.uncertain&&e.name!=='TypeError'&&!e.message.includes('响应不完整'))throw e;notice('核查请求响应未确认，正在读取服务器结果…');}
+          for(let n=0;n<20&&(!result||result.state==='uploading');n++){if(n)await delay(1500);result=await api('status',null,{task:p.task.id});}
+          notice(result?.state==='uploaded'?'已确认上传完成并展示。':result?.state==='uploading'?'服务器仍在核查，请稍后刷新记录。':result?.error||'结果待核查，请查看记录。');await refresh();
+        }));
         actions.append(button('选择原照片重试',()=>{
           if (busy) throw new Error('请等待当前上传结束。');
           const picker=el('input'); picker.type='file';
           picker.addEventListener('change',async()=>{
             if (!picker.files[0]) return;
-            queue=[{file:picker.files[0],task:{task:p.task.id,photo:p.id}}]; batchFinished=false; queueRender(); await uploadQueue();
+            queue=queue.filter(item=>!item.done);queue.push({file:picker.files[0],task:{task:p.task.id,photo:p.id}});picker.value='';batchFinished=false;queueRender();await uploadQueue();
           }); picker.click();
         })); info.append(actions);
       }
@@ -218,11 +224,12 @@
       openEditor('album',a,a.id ? '相册设置' : '新建相册');
       field('相册名称','text','title',a.title||'').required=true;
       field('相册主题 / 简介（选填）','textarea','description',a.description||'');
-      field('排序（数字小的在前）','number','sort',a.sort||0);
+      field('排序（精选优先，其次数字小的在前）','number','sort',a.sort||0);
       field('设为精选相册','checkbox','featured',a.featured||0);
-      $('[data-editor-fields]').append(el('p','相册默认公开。上传第一张照片后，即会出现在画廊；封面自动选择，也可在照片编辑中指定。','sgga-meta')); showEditor();
+      dialog.classList.add('sgga-editor--album');$('[data-editor-fields]').append(el('p','相册默认公开。上传第一张照片后，即会出现在画廊；封面自动选择，也可在照片编辑中指定。','sgga-meta')); showEditor();
     }
     function editPhoto(p) {
+      dialog.classList.remove('sgga-editor--album');
       openEditor('photo',p,'照片设置');
       const picture=$('[data-editor-preview]'); picture.hidden=false; picture.append(preview(p,'sgga-editor-image'),el('p',p.name,'sgga-meta'),details(p));
       field('照片说明（选填）','textarea','caption',p.caption);
@@ -247,7 +254,6 @@
       if (invalid) { invalid.setAttribute('aria-invalid','true'); $('[data-editor-error]').textContent=invalid.type==='date'?'请填写有效的拍摄日期，或清空日期。':'请填写相册名称。';invalid.focus();return; }
       b.disabled=true; dialog.setAttribute('aria-busy','true');
       const payload={id:editing.record.id||'',revision:editing.record.revision||0,...inputValues};
-      if (editing.kind==='album') payload.cover=editing.record.cover||'';
       const kind=editing.kind;
       try {
         const result=await api(kind,payload);
@@ -266,7 +272,9 @@
       if (!item.status) return;
       item.state=result.state; item.error=result.error || '';
       item.done=result.state==='uploaded' && result.photoState==='uploaded' && !!result.published;
-      item.status.textContent=item.done ? '上传完成 · 已展示' : states[result.state] || '结果待核查';
+      item.album=result.album||item.album;
+      item.status.textContent=item.done ? '上传完成 · 已展示' : result.state==='uploading' ? (result.phase==='writing'?'云端写入中…':result.phase==='verifying'?'云端校验中…':'正在核查云端…') : states[result.state] || '结果待核查';
+      if(result.state==='uploading')item.progress.removeAttribute('value');
       item.row.dataset.state=result.state; item.progress.hidden=item.done;
       if (item.done) item.progress.value=100;
       item.message.textContent=item.error;
@@ -277,7 +285,8 @@
         const r=el('div',null,'sgga-queue-row'); item.row=r;
         const name=el('span',item.file.name); name.title=item.file.name;
         item.status=el('span','等待上传'); item.progress=el('progress'); item.progress.max=100; item.progress.value=0; item.progress.setAttribute('aria-label',`${item.file.name} 上传进度`);
-        item.message=el('p','', 'sgga-error'); r.append(name,item.status,item.progress,item.message); return r;
+        item.message=el('p','', 'sgga-error'); const remove=button('移出队列',()=>{queue=queue.filter(q=>q!==item);queueRender();},'sgga-queue-remove');remove.dataset.queueRemove='';remove.setAttribute('aria-label',`从待上传队列移除：${item.file.name}`);remove.disabled=busy;
+        r.append(name,item.status,remove,item.progress,item.message);if(item.state)updateItem(item,{state:item.state,photoState:item.done?'uploaded':item.state,published:item.done,error:item.error,album:item.album});return r;
       }));
       $('[data-selection]').textContent=queue.length ? `已选择 ${queue.length} 张，共 ${size(queue.reduce((n,i)=>n+i.file.size,0))}` : '也可以将照片拖到这里';
       $('[data-upload]').disabled=!queue.length || busy;
@@ -289,8 +298,8 @@
       $('[data-selection]').textContent=`本次上传 ${queue.length} 张，${done} 张已展示`;
       if (showNotice) notice(all ? `本次 ${done} 张照片已上传并展示。` : `本次上传 ${queue.length} 张，${done} 张已展示；其余照片请查看具体状态。`,all?'success':'error','batch');
     }
-    function selectFiles(files) { if (busy || !files.length) return; queue=[...files].map(file=>({file})); batchFinished=false; queueRender(); notice(''); }
-    $('[data-files]').addEventListener('change',()=>selectFiles($('[data-files]').files));
+    function selectFiles(files) { if (busy || !files.length) return;queue=queue.filter(item=>!item.done);const key=f=>`${f.name}\u0000${f.size}\u0000${f.lastModified}`;const seen=new Set(queue.map(i=>key(i.file)));let skipped=0;for(const file of files){if(seen.has(key(file))){skipped++;continue;}seen.add(key(file));queue.push({file});}batchFinished=false;queueRender();notice(skipped?`已略过 ${skipped} 张重复照片。`:''); }
+    $('[data-files]').addEventListener('change',()=>{selectFiles([...$('[data-files]').files]);$('[data-files]').value='';});
     $('[data-pick]').addEventListener('click',()=>{if(!busy)$('[data-files]').click();});
     $('[data-drop]').addEventListener('dragover',e=>{e.preventDefault();if(!busy)$('[data-drop]').classList.add('is-dragging');});
     $('[data-drop]').addEventListener('dragleave',e=>{if(!$('[data-drop]').contains(e.relatedTarget))$('[data-drop]').classList.remove('is-dragging');});
@@ -328,38 +337,45 @@
       if(!date || !album){notice('上传界面未完整加载，请刷新页面后重试。','error');return;}
       if(!date.validity.valid){notice('请填写有效的拍摄日期，或清空日期。','error');date.focus();return;}
       const metadata={album:album.value,captured:date.value};
-      const controls=['[data-upload]','[data-files]','[data-pick]','[data-upload-fields]'].map($).filter(Boolean);
+      const filter=$('[data-filter]').value,previousPage=page;
+      const controls=[...['[data-upload]','[data-files]','[data-pick]','[data-upload-fields]','[data-filter]','[data-prev]','[data-next]','[data-all-photos]'].map($).filter(Boolean),...root.querySelectorAll('[data-queue-remove],.sgga-album')];const disabled=controls.map(c=>c.disabled);
       busy=true;
       try {
       controls.forEach(control=>control.disabled=true); notice('正在准备上传…');
-      for(const item of queue) {
-        if(item.done)continue;
+      // Resolve the automatic album once before concurrent prepare requests.
+      if(!metadata.album){const created=await api('album',{title:'光影收藏'});metadata.album=created.id;}
+      const pending=queue.filter(item=>!item.done);let cursor=0;
+      async function worker(){while(cursor<pending.length){const item=pending[cursor++];item.album=metadata.album;
         item.progress.hidden=false;
+        let polling=false,active=true;
+        const poll=setInterval(async()=>{if(polling||!item.task)return;polling=true;try{const status=await api('status',null,{task:item.task.task});if(active&&!item.done&&status.state==='uploading')updateItem(item,status);}catch{}finally{polling=false;}},2000);
         try {
           item.status.textContent='准备上传…';
           if(!item.task)item.task=await api('prepare',{...metadata,name:item.file.name,bytes:item.file.size});
-          const result=await send(item.task.task,item.file,n=>{item.progress.value=n;item.status.textContent=n>=100?'正在保存到云端…':`发送照片 ${n}%`;});
+          const result=await send(item.task.task,item.file,n=>{if(n>=100)item.progress.removeAttribute('value');else item.progress.value=n;item.status.textContent=n>=100?'云端写入 / 校验中…':`发送照片 ${n}%`;});
           updateItem(item,result);
           if(!item.done)await reconcile(item,new Error('正在等待云端确认'));
         } catch(e) {
           if(item.task)await reconcile(item,e);
           else updateItem(item,{state:'failed',error:e.message});
-        }
-      }
+        }finally{active=false;clearInterval(poll);}
+      }}await Promise.all(Array.from({length:Math.min(2,pending.length)},worker));
       } catch(e) {
         queue.filter(item=>!item.done).forEach(item=>updateItem(item,{state:'failed',error:e.message || '上传未启动，请重新选择照片后重试。'}));
         notice(e.message || '上传未启动，请重试。','error');
       } finally {
-        busy=false;controls.forEach(control=>control.disabled=false);
+        busy=false;controls.forEach((control,index)=>control.disabled=disabled[index]);
       }
       $('[data-files]').value='';
       batchFinished=true;batchSummary(true);
       $('[data-upload]').disabled=true;
-      page=1; $('[data-filter]').value=''; await refresh();
+      const outside=!!filter&&queue.some(item=>item.done&&item.album!==filter);
+      page=outside?1:previousPage; $('[data-filter]').value=outside?'':filter;await refresh();
+      if(outside){const item=queue.find(item=>item.done&&item.album!==filter);const photo=root.querySelector(`[data-photo="${item?.task?.photo}"]`);photo?.scrollIntoView({block:'center',behavior:'smooth'});photo?.classList.add('sgga-photo--new');notice('新照片属于其他相册，已切换到全部照片并定位。');}
     }
     $('[data-upload]').addEventListener('click',uploadQueue);
     $('[data-refresh]').addEventListener('click',()=>{notice('');refresh();});
-    $('[data-filter]').addEventListener('change',()=>{page=1;refresh();});
+    $('[data-filter]').addEventListener('change',()=>{if($('[data-filter]').value)$('[data-upload-album]').value=$('[data-filter]').value;page=1;refresh();});
     $('[data-prev]').addEventListener('click',()=>{if(page>1){page--;refresh();}});
     $('[data-next]').addEventListener('click',()=>{if(page<pages){page++;refresh();}});
     // Suppress only accidental outer-form submission, preserving date/select and IME keys.
