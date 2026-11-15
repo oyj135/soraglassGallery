@@ -15,7 +15,7 @@ final class Catalog
         $revision = (int) ($this->rows($q)[0]['value'] ?? 0);
         $scope = hash('sha256', __TYPECHO_ROOT_DIR__ . $this->db->getPrefix() . serialize($this->db->getConfig(Db::WRITE)));
         $dir = sys_get_temp_dir() . '/sg-gallery-' . substr($scope, 0, 24);
-        $path = $dir . '/' . hash('sha256', $key . Settings::profile($this->delivery) . $this->delivery['domain']) . '.json';
+        $path = $dir . '/' . hash('sha256', 'stack-v1:' . $key . Settings::profile($this->delivery) . $this->delivery['domain']) . '.json';
         $saved = is_file($path) ? json_decode((string) @file_get_contents($path), true) : null;
         if (is_array($saved) && ($saved['revision'] ?? -1) === $revision && ($saved['expires'] ?? 0) > time()) { return $saved['data']; }
         $data = $load();
@@ -47,18 +47,20 @@ final class Catalog
             $prefix = $this->db->getPrefix();
             // Scalar, indexed lookups stay inside one SQL request. Only covers reach PHP.
             $cover = "COALESCE((SELECT cp.id FROM {$prefix}sg_gallery_photos cp WHERE cp.id=a.cover AND cp.album=a.id AND cp.state='uploaded' AND cp.published=1 AND cp.preview=1 LIMIT 1),(SELECT fp.id FROM {$prefix}sg_gallery_photos fp WHERE fp.album=a.id AND fp.state='uploaded' AND fp.published=1 AND fp.preview=1 ORDER BY fp.captured DESC,fp.created DESC,fp.id LIMIT 1)) AS chosen_cover";
+            foreach ([1, 2] as $offset) { $cover .= ", (SELECT sp.id FROM {$prefix}sg_gallery_photos sp WHERE sp.album=a.id AND sp.state='uploaded' AND sp.published=1 AND sp.preview=1 ORDER BY sp.captured DESC,sp.created DESC,sp.id LIMIT 1 OFFSET $offset) AS stack_$offset"; }
             $select = $q->order('a.featured', Db::SORT_DESC)->order('a.sort')->order('a.created', Db::SORT_DESC)->order('a.id')->page($actualPage, 24);
             $sql = $select->prepare((string) $select);
             // Query::select quotes nested SELECT/FROM as column names. Insert our fixed,
             // prefix-validated expression after preparing all user-bound conditions.
             $rows = $this->rows('SELECT ' . $cover . ', ' . substr($sql, 7));
-            $ids = array_values(array_filter(array_column($rows, 'chosen_cover')));
+            $ids = array_values(array_unique(array_filter(array_merge(array_column($rows, 'chosen_cover'), array_column($rows, 'stack_1'), array_column($rows, 'stack_2')))));
             $covers = [];
             if ($ids) { foreach ($this->rows($this->db->select()->from('table.sg_gallery_photos')->where('id IN ?', $ids)) as $photo) { $covers[$photo['id']] = $this->photo($photo); } }
             $albums = [];
             foreach ($rows as $a) {
                 $cover = $covers[$a['chosen_cover']] ?? null; $first = $a['min_date'] ?? ''; $last = $a['max_date'] ?? '';
-                $albums[] = ['id' => $a['id'], 'title' => $a['title'], 'description' => $a['description'], 'featured' => (bool) $a['featured'], 'count' => (int) $a['photo_count'], 'date' => $first === $last ? $first : $first . ' — ' . $last, 'cover' => $cover['url'] ?? '', 'coverThumb' => $cover['thumb'] ?? '', 'photos' => $cover ? [$cover] : []];
+                $stack = []; foreach (['stack_1', 'stack_2'] as $field) { $p = $covers[$a[$field]] ?? null; if ($p && $p['id'] !== ($cover['id'] ?? '')) { $stack[] = $p['thumb']; } }
+                $albums[] = ['id' => $a['id'], 'title' => $a['title'], 'description' => $a['description'], 'featured' => (bool) $a['featured'], 'count' => (int) $a['photo_count'], 'date' => $first === $last ? $first : $first . ' — ' . $last, 'cover' => $cover['url'] ?? '', 'coverThumb' => $cover['thumb'] ?? '', 'stack' => $stack, 'photos' => $cover ? [$cover] : []];
             }
             $totalPhotos = (int) ($this->rows($this->albumQuery()->select('SUM(s.photo_count) AS n'))[0]['n'] ?? 0);
             return ['albums' => $albums, 'total' => $total, 'photoTotal' => $totalPhotos, 'page' => $actualPage, 'pages' => $pages];

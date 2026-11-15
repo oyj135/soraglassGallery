@@ -10,7 +10,7 @@ require_once __DIR__ . '/bootstrap.php';
  * 光影画廊：相册管理与可扩展云存储上传
  * @package SoraglassGallery
  * @author Soraglass
- * @version 1.2.0
+ * @version 1.3.0
  * @since 1.3.0
  * @link https://typecho.org
  */
@@ -18,6 +18,11 @@ final class Plugin implements PluginInterface
 {
     public static function activate()
     {
+        $installed = \Typecho\Plugin::export()['handles'] ?? [];
+        foreach (Attachments::hooks() as $method => $callback) {
+            $key = \Typecho\Common::nativeClassName(\Widget\Upload::class) . ':' . $method;
+            if (array_filter($installed[$key] ?? [], static fn($existing) => $existing !== $callback)) { throw new \Typecho\Plugin\Exception('文章附件已有其他插件接管，请先关闭其附件存储功能。'); }
+        }
         if (PHP_VERSION_ID < 80200) { throw new \Typecho\Plugin\Exception('画廊插件需要 PHP 8.2 或以上'); }
         foreach (['curl', 'fileinfo', 'openssl', 'mbstring', 'simplexml'] as $extension) {
             if (!extension_loaded($extension)) { throw new \Typecho\Plugin\Exception('请先启用 PHP 扩展：' . $extension); }
@@ -26,6 +31,7 @@ final class Plugin implements PluginInterface
         catch (\Throwable $e) { throw new \Typecho\Plugin\Exception('画廊初始化失败：' . $e->getMessage()); }
         \Utils\Helper::addAction('sg-gallery', Action::class);
         \Utils\Helper::addPanel(3, 'SoraglassGallery/manage.php', '光影画廊', '管理相册与云端照片', 'administrator');
+        foreach (Attachments::hooks() as $method => $callback) { \Typecho\Plugin::factory(\Widget\Upload::class)->$method = $callback; }
         return '画廊已启用，请先配置云存储，再打开「管理 → 光影画廊」。';
     }
 
@@ -38,6 +44,7 @@ final class Plugin implements PluginInterface
 
     public static function config(\Typecho\Widget\Helper\Form $form)
     {
+        Attachments::upgrade();
         $form->addInput(new \Typecho\Widget\Helper\Form\Element\Select('provider', Storage\Registry::choices(), 'cos', '云存储', '统一用于新上传；更改不会迁移已有照片。'));
         $labels = [
             'bucket' => ['Bucket 名称', 'COS 包含 APPID，例如 photos-1250000000；OSS 填存储空间名称。'],
@@ -84,6 +91,7 @@ final class Plugin implements PluginInterface
 
     public static function enabled(): bool
     {
+        Attachments::upgrade();
         return isset(\Typecho\Plugin::export()['activated']['SoraglassGallery']);
     }
 

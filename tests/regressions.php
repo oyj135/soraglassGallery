@@ -78,3 +78,17 @@ try {
     (new Repository($legacy))->install(); check(true, 'schema upgrade is idempotent');
 } finally { @unlink($legacyFile); }
 Settings::save(array_merge($settingsBefore, ['keyId' => Settings::MASK, 'keySecret' => Settings::MASK]));
+$nativeDriver = new FakeStorage();
+$native = \TypechoPlugin\SoraglassGallery\Attachments::store(['name' => 'article-photo.jpg', 'tmp_name' => $photoFile], $config, $nativeDriver);
+check(str_starts_with($native['path'], 'article/') && $native['sgHash'] === hash_file('sha256', $photoFile), 'native article uploads use a dedicated cloud directory and verified metadata');
+check($native['size'] === filesize($photoFile) && $native['type'] === 'jpg' && isset($native['sgStorage']['profile']) && !isset($native['sgStorage']['keySecret']), 'Typecho attachment metadata retains path and storage target without credentials');
+$nativeDriver->failure = 'lost-response'; $nativeLost = \TypechoPlugin\SoraglassGallery\Attachments::store(['name' => 'note.txt', 'bytes' => 'Article attachment'], $config, $nativeDriver);
+check($nativeLost['size'] === 18 && $nativeDriver->writes === 2, 'native upload reconciles a lost cloud response without a duplicate write');
+$nativeUrl = \TypechoPlugin\SoraglassGallery\Attachments::attachmentHandle(new \Typecho\Config($native));
+check(str_contains($nativeUrl, '/article/') && !str_contains($nativeUrl, 'imageMogr2'), 'native attachment links resolve to originals rather than thumbnails');
+check(count(\TypechoPlugin\SoraglassGallery\Attachments::hooks()) === 5 && !method_exists($repo, 'removePhoto'), 'native attachment hooks do not restore gallery record deletion');
+$livePlugins = \Typecho\Plugin::export();
+$handles = []; foreach (\TypechoPlugin\SoraglassGallery\Attachments::hooks() as $method => $callback) { $handles[\Typecho\Common::nativeClassName(\Widget\Upload::class) . ':' . $method] = [$callback]; }
+\Typecho\Plugin::init(['activated' => ['SoraglassGallery' => ['handles' => $handles]], 'handles' => $handles]);
+check(\Widget\Upload::attachmentHandle(new \Typecho\Config($native)) === $nativeUrl, 'native Typecho upload dispatch uses normalized hook names');
+\Typecho\Plugin::init($livePlugins);
