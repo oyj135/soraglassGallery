@@ -175,6 +175,20 @@ final class Repository
         });
     }
 
+    /** Soft delete: the row stays for audit, every public query already skips it. */
+    public function removePhoto(string $id): void
+    {
+        $photo = $this->get('photos', $id);
+        if ($photo['state'] === 'removed') { return; }
+        $this->transaction(function () use ($photo, $id) {
+            $this->update('photos', $id, ['state' => 'removed', 'published' => 0, 'revision' => (int) $photo['revision'] + 1, 'updated' => time()]);
+            // Release the cover pointer and stop any pending task from resurrecting the row.
+            $this->db->query($this->db->update('table.sg_gallery_albums')->rows(['cover' => ''])->expression('revision', 'revision + 1', false)->where('cover = ?', $id));
+            $this->db->query($this->db->update('table.sg_gallery_tasks')->rows(['state' => 'removed', 'phase' => '', 'lease' => 0, 'updated' => time()])->where('photo = ?', $id));
+            $this->invalidate();
+        });
+    }
+
     public function publicAlbums(int $page = 1): array
     {
         return $this->catalog()->albums($page)['albums'];

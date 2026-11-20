@@ -35,10 +35,18 @@
 .sgga[data-sgga] textarea{resize:none;min-height:96px}
 .sgga[data-sgga] input::placeholder,.sgga[data-sgga] textarea::placeholder{color:var(--ga-muted);opacity:1}
 .sgga[data-sgga] input[aria-invalid=true]{border-color:var(--ga-error)!important}
-.sgga[data-sgga] .sgga-date{display:flex;align-items:stretch;gap:6px;margin-top:6px;min-width:0}
-.sgga[data-sgga] .sgga-date input[type=date]{flex:1;width:0!important;margin:0!important;position:static!important;opacity:1!important;visibility:visible!important}
-.sgga[data-sgga] .sgga-date button{font-size:12px;padding:8px 10px!important;flex-shrink:0}
-.sgga[data-sgga] input[type=date]::-webkit-calendar-picker-indicator{display:none!important}
+/* 日期字段：整块是入口，输入框只显示 YYYY-MM-DD，右侧补星期/相对天数 */
+.sgga[data-sgga] .sgga-date{display:block;margin-top:6px;min-width:0}
+.sgga[data-sgga] .sgga-date-box{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 8px 0 10px;border:1px solid var(--ga-border);border-radius:7px;background:var(--ga-control);cursor:pointer}
+.sgga[data-sgga] .sgga-date-box:hover{border-color:var(--ga-accent)}
+.sgga[data-sgga] .sgga-date-box:focus-within{border-color:var(--ga-accent)}
+.sgga[data-sgga] .sgga-date-box input[type=text]{flex:1;width:0!important;min-width:0;min-height:0;margin:0!important;padding:10px 0!important;border:0!important;background:transparent!important;box-shadow:none;cursor:pointer;font-variant-numeric:tabular-nums}
+.sgga[data-sgga] .sgga-date-box input.is-empty{letter-spacing:0}
+.sgga[data-sgga] .sgga-date-hint{font-size:12px;color:var(--ga-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:12em}
+.sgga[data-sgga] .sgga-date-open,.sgga[data-sgga] .sgga-date-clear{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;min-height:0;padding:0!important;border:0!important;background:transparent!important;color:var(--ga-muted)!important;border-radius:6px;flex-shrink:0}
+.sgga[data-sgga] .sgga-date-open:hover,.sgga[data-sgga] .sgga-date-clear:hover{color:var(--ga-accent)!important;background:var(--ga-surface)!important}
+.sgga[data-sgga] .sgga-date-clear{font-size:17px;line-height:1;color:var(--ga-muted)!important}
+.sgga[data-sgga] .sgga-date-open svg{display:block}
 .sgga[data-sgga] .sgga-calendar{position:fixed;inset:auto;margin:0!important;z-index:10000;padding:14px;border:1px solid var(--ga-border);border-radius:10px;background:var(--ga-control)!important;color:var(--ga-ink)!important;box-shadow:0 10px 40px #0003;color-scheme:var(--ga-scheme)}
 .sgga-calendar-head{display:grid;grid-template-columns:32px minmax(0,1fr) minmax(0,1fr) 32px;gap:8px;align-items:center}
 .sgga[data-sgga] .sgga-calendar-head input,.sgga[data-sgga] .sgga-calendar-head select{margin:0!important;min-height:36px;padding:5px 6px!important;font-size:12px!important}
@@ -118,3 +126,31 @@ html[data-sgga-page]{scroll-padding-bottom:120px}html[data-sgga-page] .sgga[data
 @media(max-width:600px){.sgga-queue-row{grid-template-columns:minmax(0,1fr) auto}.sgga-queue-row>span:first-child{grid-column:1/-1}}
 @media(max-width:900px){.sgga-workspace{grid-template-columns:170px minmax(0,1fr);gap:24px}.sgga-sidebar{padding-right:16px}.sgga-photos{grid-template-columns:repeat(2,minmax(0,1fr))}.sgga-photo-preview{height:190px}}
 @media(max-width:640px){.sgga-workspace{grid-template-columns:1fr;gap:20px}.sgga-sidebar{position:static;border-right:0;padding-right:0}.sgga-sidebar-note{display:none}.sgga-albums{flex-direction:row;flex-wrap:wrap;margin-bottom:0}.sgga-sidebar .sgga-toolbar{margin:10px 0}.sgga-album-row{max-width:100%}.sgga[data-sgga] .sgga-album{flex:none}.sgga-photos{grid-template-columns:1fr}.sgga-photo-preview{height:240px}}
+/* 顶部页面栏：名称 / 返回控制台 / 云存储设置都收在页首，工作台底部不再挂任何插件级导航 */
+.sgga-topbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:0 0 20px;font-size:12px;line-height:1.6}
+.sgga[data-sgga] .sgga-topbar a{color:var(--ga-muted);text-decoration:none}
+.sgga[data-sgga] .sgga-topbar a:hover{color:var(--ga-accent);text-decoration:none}
+.sgga-topbar-site{padding-left:12px;border-left:1px solid var(--ga-border);color:var(--ga-muted);max-width:40ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sgga[data-sgga] .sgga-topbar .sgga-config{margin-left:auto;color:var(--ga-accent)}
+/* 后台主题在页脚渲染的「站点名 / 返回控制台」在工作台里是重复信息，页首已经给过 */
+body:has(.sgga-host)>footer.typecho-foot{display:none!important}
+.sgga-dialog-actions{flex-wrap:wrap;gap:12px}
+.sgga[data-sgga] .sgga-dialog-buttons{display:flex;gap:12px;margin-left:auto}
+.sgga[data-sgga] .sgga-link-danger{background:transparent!important;border:0!important;color:var(--ga-error)!important;padding:4px 0!important;min-height:0;font-size:13px}
+.sgga[data-sgga] .sgga-link-danger:hover{text-decoration:underline}
+.sgga[data-sgga] .sgga-danger{background:var(--ga-error)!important;border-color:var(--ga-error)!important;color:#fff!important;font-weight:600}
+/* 夜间 --ga-error 是浅珊瑚色，白字会糊在底上，改用深字 */
+.sgga[data-tone=dark] .sgga-danger{color:#2b1512!important}
+.sgga[data-sgga] .sgga-danger:hover{filter:brightness(1.06)}
+.sgga[data-sgga] .sgga-photo-delete{color:var(--ga-error)!important}
+.sgga[data-sgga] dialog[data-confirm]{width:min(540px,calc(100vw - 32px));padding:24px!important}
+.sgga-confirm-body{display:grid;grid-template-columns:128px minmax(0,1fr);gap:20px;align-items:start}
+.sgga-confirm-preview img{display:block;width:128px;height:96px;object-fit:cover;border-radius:6px}
+.sgga-confirm-preview>span{display:flex;align-items:center;justify-content:center;width:128px;height:96px;font-size:12px;color:var(--ga-muted);border:1px solid var(--ga-border);border-radius:6px}
+.sgga-confirm-text{font-size:14px;overflow-wrap:anywhere;margin-bottom:14px!important}
+.sgga[data-sgga] .sgga-check span{font-size:13px}
+.sgga[data-sgga] [data-confirm-error]{color:var(--ga-error)!important;font-size:13px;margin-top:14px}
+.sgga [data-confirm-error]:empty{display:none}
+.sgga[data-sgga] .sgga-calendar-days button[data-today=true]{border-color:var(--ga-accent)!important;font-weight:600}
+.sgga[data-sgga] .sgga-calendar-days button[data-today=true][aria-pressed=true]{background:var(--ga-accent)!important;color:var(--ga-control)!important}
+@media(max-width:600px){.sgga-confirm-body{grid-template-columns:1fr;gap:14px}.sgga-confirm-preview img,.sgga-confirm-preview>span{width:100%;height:130px}.sgga[data-sgga] dialog[data-confirm]{padding:18px!important}}

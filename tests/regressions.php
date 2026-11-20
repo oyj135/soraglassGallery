@@ -86,7 +86,7 @@ $nativeDriver->failure = 'lost-response'; $nativeLost = \TypechoPlugin\Soraglass
 check($nativeLost['size'] === 18 && $nativeDriver->writes === 2, 'native upload reconciles a lost cloud response without a duplicate write');
 $nativeUrl = \TypechoPlugin\SoraglassGallery\Attachments::attachmentHandle(new \Typecho\Config($native));
 check(str_contains($nativeUrl, '/article/') && !str_contains($nativeUrl, 'imageMogr2'), 'native attachment links resolve to originals rather than thumbnails');
-check(count(\TypechoPlugin\SoraglassGallery\Attachments::hooks()) === 5 && !method_exists($repo, 'removePhoto'), 'native attachment hooks do not restore gallery record deletion');
+check(count(\TypechoPlugin\SoraglassGallery\Attachments::hooks()) === 5 && in_array('deleteHandle', array_keys(\TypechoPlugin\SoraglassGallery\Attachments::hooks()), true) && class_exists(\TypechoPlugin\SoraglassGallery\Removal::class), 'native attachment hooks stay scoped to article files; gallery deletion runs through its own admin-only service');
 $livePlugins = \Typecho\Plugin::export();
 $handles = []; foreach (\TypechoPlugin\SoraglassGallery\Attachments::hooks() as $method => $callback) { $handles[\Typecho\Common::nativeClassName(\Widget\Upload::class) . ':' . $method] = [$callback]; }
 \Typecho\Plugin::init(['activated' => ['SoraglassGallery' => ['handles' => $handles]], 'handles' => $handles]);

@@ -5,13 +5,15 @@
     root.dataset.ready = '1';
     const $ = selector => root.querySelector(selector);
     const el = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = text; if (cls) n.className = cls; return n; };
-    const states = {pending:'等待上传', uploading:'正在上传', uploaded:'已上传', failed:'上传失败', unknown:'结果待核查'};
+    const states = {pending:'等待上传', uploading:'正在上传', uploaded:'已上传', failed:'上传失败', unknown:'结果待核查', removed:'已删除'};
     const notice = (text, tone = 'info', source = '') => { $('[data-alert]').textContent = text; $('[data-alert]').hidden = !text; $('[data-alert]').dataset.tone = tone; $('[data-alert]').dataset.source=source; };
     let albums = [], photos = [], page = 1, pages = 1, queue = [], busy = false, batchFinished = false, editing = null, refreshVersion = 0, fieldId = 0;
     const dialog = $('[data-editor]');
     const url = op => { const u = new URL(root.dataset.endpoint, location.href); u.searchParams.set('op', op); if(root.dataset.csrf)u.searchParams.set('_',root.dataset.csrf); return u; };
     const body = values => { const f = new FormData(); Object.entries(values).forEach(([k,v]) => f.append(k,v)); if(root.dataset.csrf)f.set('_',root.dataset.csrf); return f; };
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+    // 后台主题常给 button 加 ::before 图标或改写原生 date 控件，图标直接内联最稳。
+    const CALENDAR_ICON = '<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true" focusable="false"><rect x="2.2" y="3.4" width="11.6" height="10.4" rx="2"/><path d="M2.2 6.6h11.6M5.4 2.2v2.4M10.6 2.2v2.4"/></svg>';
     const size = bytes => Number(bytes) < 1048576 ? `${Math.ceil(Number(bytes)/1024)} KB` : `${(Number(bytes)/1048576).toFixed(1)} MB`;
     // 上传前转 WebP（质量 80）。放在浏览器端做：prepare 报的 bytes 与 send 发的
     // 就是转换后的同一个 Blob，PHP 侧「大小 + sha256」校验链条一行都不用改；
@@ -153,6 +155,7 @@
       foot.dataset.state = state;
       foot.append(button('编辑',()=>editPhoto(p)));
       if (p.state === 'uploaded') { const a = el('a','原图'); a.href=p.url; a.target='_blank'; a.rel='noopener noreferrer'; foot.append(a); }
+      const remove=button('删除',()=>askDelete(p),'sgga-photo-delete');remove.setAttribute('aria-label',`删除照片：${p.caption||p.name}`);foot.append(remove);
       info.append(foot);
       if (p.task?.error) info.append(el('p',p.task.error,'sgga-error'));
       if (p.task && state !== 'uploaded' && state !== 'uploading') {
@@ -175,33 +178,55 @@
       }
       info.append(details(p)); row.append(preview(p,'sgga-photo-preview'),info); return row;
     }
-    // Shared date primitive: date-only typed input + owned calendar, immune to host
-    // date-icon rules. A popover keeps the calendar above a scrolling edit dialog.
+    // 日期字段：整块可点、弹出自己绘制的日历。原生 input[type=date] 在中文环境下是
+    // 「年/月/日」三段占位，点框不弹窗，还得在旁边摆「日历 / 清空」两个按钮才可用；
+    // 这里换成只读文本 + 自定义日历：值仍是 YYYY-MM-DD（服务端与上传逻辑不用改），
+    // 右侧补星期与「3 天前」，选完能一眼确认没选错。
+    const WEEK = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const isoOf = d => `${String(d.getFullYear()).padStart(4, '0')}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    function parseIso(iso) {
+      const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || '')); if (!m) return null;
+      const d = new Date(0); d.setFullYear(+m[1], +m[2] - 1, +m[3]); d.setHours(12, 0, 0, 0);
+      return Number.isNaN(d.getTime()) || d.getMonth() !== +m[2] - 1 ? null : d;
+    }
+    function dateHint(iso) {
+      const d = parseIso(iso); if (!d) return '';
+      const today = new Date(); today.setHours(12, 0, 0, 0);
+      const gap = Math.round((d - today) / 86400000);
+      // gap 为「目标日期减今天」：负数在过去，正数在未来，符号写反会显示成「3 天后」。
+      const rel = gap === 0 ? '今天' : gap === -1 ? '昨天' : gap === 1 ? '明天' : gap < -1 ? `${-gap} 天前` : `${gap} 天后`;
+      return `${WEEK[d.getDay()]} · ${rel}`;
+    }
     function bindDate(wrap) {
       const input = wrap.querySelector('input');
-      input.min='0001-01-01';input.max='9999-12-31';
-      const opener=wrap.querySelector('[data-date-open]');
+      const opener = wrap.querySelector('[data-date-open]');
+      const box = wrap.querySelector('.sgga-date-box');
+      const hint = wrap.querySelector('[data-date-hint]');
+      const clear = wrap.querySelector('[data-date-clear]');
       const popup=el('div',null,'sgga-calendar');popup.setAttribute('popover','auto');popup.setAttribute('role','dialog');popup.setAttribute('aria-label','选择拍摄日期');popup.hidden=true;
       const uid=`sgga-calendar-${++fieldId}`;popup.id=uid;opener.setAttribute('aria-controls',uid);opener.setAttribute('aria-expanded','false');
       const nativePopover=typeof popup.showPopover==='function';
       const date=(year,month,day)=>{const d=new Date(0);d.setFullYear(year,month,day);d.setHours(12,0,0,0);return d;};
-      const iso=d=>`${String(d.getFullYear()).padStart(4,'0')}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
       let focused=new Date(),shownYear=focused.getFullYear(),shownMonth=focused.getMonth(),open=false;
       const header=el('div',null,'sgga-calendar-head'),year=el('input'),month=el('select');
       year.type='number';year.min=1;year.max=9999;year.setAttribute('aria-label','年份');month.setAttribute('aria-label','月份');
       for(let m=0;m<12;m++){const option=el('option',`${m+1}月`);option.value=m;month.append(option);}
       const days=el('div',null,'sgga-calendar-days');days.setAttribute('role','group');days.setAttribute('aria-label','选择日期，方向键移动');
+      function sync(){const ok=!!parseIso(input.value);input.classList.toggle('is-empty',!ok);if(hint)hint.textContent=ok?dateHint(input.value):'';if(clear)clear.hidden=!ok;}
       function close(restore=false){if(!open)return;open=false;if(nativePopover)popup.hidePopover();else popup.hidden=true;opener.setAttribute('aria-expanded','false');if(restore)input.focus();}
-      function choose(d){input.value=d?iso(d):'';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));close(true);}
+      function choose(d){input.value=d?isoOf(d):'';sync();input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));close(true);}
       function render(){
         year.value=shownYear;month.value=shownMonth;days.replaceChildren();
         ['一','二','三','四','五','六','日'].forEach(day=>days.append(el('span',day)));
         const offset=(date(shownYear,shownMonth,1).getDay()+6)%7;
         for(let n=0;n<offset;n++)days.append(el('span',''));
         const count=date(shownYear,shownMonth+1,0).getDate();
+        const today=isoOf(new Date());
         for(let n=1;n<=count;n++){
-          const d=date(shownYear,shownMonth,n),value=iso(d),b=button(String(n),()=>choose(d));
-          b.dataset.day=value;b.setAttribute('aria-label',`${shownYear}年${shownMonth+1}月${n}日`);b.setAttribute('aria-pressed',String(value===input.value));b.tabIndex=value===iso(focused)?0:-1;days.append(b);
+          const d=date(shownYear,shownMonth,n),value=isoOf(d),b=button(String(n),()=>choose(d));
+          b.dataset.day=value;b.setAttribute('aria-label',`${shownYear}年${shownMonth+1}月${n}日`);b.setAttribute('aria-pressed',String(value===input.value));
+          if(value===today)b.dataset.today='true';
+          b.tabIndex=value===isoOf(focused)?0:-1;days.append(b);
         }
       }
       function moveMonth(step){const d=date(shownYear,shownMonth+step,1);if(d.getFullYear()<1||d.getFullYear()>9999)return;shownYear=d.getFullYear();shownMonth=d.getMonth();focused=date(shownYear,shownMonth,Math.min(focused.getDate(),date(shownYear,shownMonth+1,0).getDate()));render();}
@@ -214,20 +239,31 @@
         const offsets={ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7};
         if(!(event.key in offsets))return;event.preventDefault();
         const selected=event.target.dataset.day.split('-').map(Number);const d=date(selected[0],selected[1]-1,selected[2]+offsets[event.key]);
-        if(d.getFullYear()<1||d.getFullYear()>9999)return;focused=d;shownYear=d.getFullYear();shownMonth=d.getMonth();render();days.querySelector(`[data-day="${iso(d)}"]`)?.focus();
+        if(d.getFullYear()<1||d.getFullYear()>9999)return;focused=d;shownYear=d.getFullYear();shownMonth=d.getMonth();render();days.querySelector(`[data-day="${isoOf(d)}"]`)?.focus();
       });
-      const foot=el('div',null,'sgga-calendar-foot');foot.append(button('今天',()=>choose(new Date())),button('清空',()=>choose(null)));popup.append(header,days,foot);wrap.append(popup);
+      const foot=el('div',null,'sgga-calendar-foot');
+      const yesterday=()=>{const d=new Date();d.setHours(12,0,0,0);d.setDate(d.getDate()-1);return d;};
+      foot.append(button('今天',()=>choose(new Date())),button('昨天',()=>choose(yesterday())),button('清空',()=>choose(null)));
+      popup.append(header,days,foot);wrap.append(popup);
       popup.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();event.stopPropagation();close(true);}});
       popup.addEventListener('toggle',event=>{if(event.newState==='closed'){open=false;opener.setAttribute('aria-expanded','false');}});
       opener.addEventListener('click',()=>{
         if(open){close(true);return;}
-        const parts=input.value.match(/^(\d{4})-(\d{2})-(\d{2})$/);focused=parts?date(+parts[1],+parts[2]-1,+parts[3]):new Date();shownYear=focused.getFullYear();shownMonth=focused.getMonth();render();
+        const current=parseIso(input.value);focused=current||new Date();shownYear=focused.getFullYear();shownMonth=focused.getMonth();render();
         popup.hidden=false;if(nativePopover)popup.showPopover();open=true;opener.setAttribute('aria-expanded','true');
         const rect=input.getBoundingClientRect();const width=Math.min(320,innerWidth-32);popup.style.width=`${width}px`;popup.style.left=`${Math.max(8,Math.min(rect.left,innerWidth-width-8))}px`;popup.style.top=`${Math.max(8,Math.min(rect.bottom+8,innerHeight-popup.offsetHeight-8))}px`;
         days.querySelector('[tabindex="0"]')?.focus();
       });
+      // 整块字段都是入口：点框内空白或输入框都能唤起日历，只有清空按钮例外。
+      box?.addEventListener('click',event=>{if(event.target.closest('button,input'))return;opener.click();});
+      input.addEventListener('click',()=>{if(!open)opener.click();});
+      input.addEventListener('keydown',event=>{if(event.key==='Enter'||event.key===' '||event.key==='ArrowDown'){event.preventDefault();opener.click();}});
       if(!nativePopover)document.addEventListener('click',event=>{if(open&&!wrap.contains(event.target))close();});
-      wrap.querySelector('[data-date-clear]').addEventListener('click',()=>{ input.value=''; input.dispatchEvent(new Event('input',{bubbles:true})); input.focus(); });
+      clear?.addEventListener('click',event=>{
+        event.stopPropagation();input.value='';sync();
+        input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.focus();
+      });
+      sync();
     }
     bindDate($('.sgga-date'));
     function field(label, type, key, value = '') {
@@ -236,11 +272,15 @@
       input.id=`sgga-field-${++fieldId}`; input.dataset.key=key; input.setAttribute('aria-describedby','sgga-editor-error'); labelEl.htmlFor=input.id;
       if (type === 'select') options(input,value);
       else if (type === 'checkbox') { input.type='checkbox'; input.checked=!!Number(value); wrap.classList.add('sgga-check'); }
-      else { if(type !== 'textarea') input.type=type; input.value=value; }
+      else { if(type !== 'textarea') input.type = type === 'date' ? 'text' : type; input.value=value; }
       if (type === 'date') {
-        const date=el('div',null,'sgga-date'); const open=el('button','日历'), clear=el('button','清空');
-        open.type=clear.type='button'; open.dataset.dateOpen=''; clear.dataset.dateClear=''; open.setAttribute('aria-label','选择拍摄日期'); clear.setAttribute('aria-label','清空拍摄日期');
-        date.append(input,open,clear); wrap.append(labelEl,date); bindDate(date);
+        input.readOnly=true; input.placeholder='选择拍摄日期';
+        const date=el('div',null,'sgga-date'), box=el('div',null,'sgga-date-box');
+        const open=el('button',null,'sgga-date-open'), hint=el('span',null,'sgga-date-hint'), clear=el('button','×','sgga-date-clear');
+        open.type=clear.type='button'; open.dataset.dateOpen=''; clear.dataset.dateClear=''; hint.dataset.dateHint='';
+        open.setAttribute('aria-haspopup','dialog'); open.setAttribute('aria-expanded','false'); open.setAttribute('aria-label','打开日历选择拍摄日期');
+        clear.setAttribute('aria-label','清空拍摄日期'); hint.setAttribute('aria-hidden','true'); clear.hidden=true;
+        open.innerHTML=CALENDAR_ICON; box.append(open,input,hint,clear); date.append(box); wrap.append(labelEl,date); bindDate(date);
       } else if (type === 'checkbox') wrap.append(input,labelEl);
       else wrap.append(labelEl,input);
       if (type === 'textarea') input.addEventListener('input',()=>{ input.style.height='auto'; input.style.height=`${Math.max(96,input.scrollHeight)}px`; });
@@ -254,6 +294,7 @@
     function openEditor(kind, record, title) {
       editing={kind,record,focus:document.activeElement}; $('[data-editor-fields]').replaceChildren(); $('[data-editor-preview]').replaceChildren(); $('[data-editor-preview]').hidden=true;
       $('[data-editor-error]').textContent=''; $('[data-discard]').hidden=true; $('#sgga-editor-title').textContent=title;
+      $('[data-editor-delete]').hidden = kind !== 'photo';
     }
     function showEditor() { editing.original=JSON.stringify(values()); dialog.showModal(); $('[data-editor-fields] input, [data-editor-fields] textarea, [data-editor-fields] select')?.focus(); }
     function editAlbum(a = {}) {
@@ -284,10 +325,48 @@
     $('[data-close]').addEventListener('click',()=>closeEditor());
     $('[data-keep]').addEventListener('click',()=>{ $('[data-discard]').hidden=true; $('[data-close]').focus(); });
     $('[data-discard-close]').addEventListener('click',()=>closeEditor(true));
+    // 删除：先确认再动手。云端对象删除失败时相册记录保持不变，可以直接重试；
+    // 取消勾选则只移除记录，原图仍留在云端（以前的 Bucket 用当前凭据删不掉，只能这样）。
+    const confirmDialog=$('[data-confirm]');
+    let pendingDelete=null, deleting=false;
+    function askDelete(p){
+      pendingDelete=p;
+      const purge=$('[data-confirm-purge]');
+      purge.checked=!!p.object_key; purge.disabled=!p.object_key;
+      $('[data-confirm-text]').textContent=`将删除「${p.caption||p.name}」${p.captured?`（${p.captured} 拍摄）`:''}。`;
+      $('[data-confirm-preview]').replaceChildren(preview(p,'sgga-confirm-image'));
+      $('[data-confirm-error]').textContent='';
+      $('[data-confirm-note]').textContent = p.object_key ? '关闭此选项只从相册移除记录，云端原图仍会保留。' : '这条记录没有云端文件，删除只会移除相册记录。';
+      confirmDialog.showModal(); $('[data-confirm-cancel]').focus();
+    }
+    function closeConfirm(){ if(deleting)return; confirmDialog.close(); }
+    confirmDialog.addEventListener('cancel',event=>{event.preventDefault();closeConfirm();});
+    confirmDialog.addEventListener('close',()=>{pendingDelete=null;});
+    confirmDialog.addEventListener('click',event=>{if(event.target===confirmDialog)closeConfirm();});
+    $('[data-confirm-close]').addEventListener('click',()=>closeConfirm());
+    $('[data-confirm-cancel]').addEventListener('click',()=>closeConfirm());
+    $('[data-confirm-ok]').addEventListener('click',async()=>{
+      if(!pendingDelete||deleting)return;
+      const ok=$('[data-confirm-ok]'), purge=$('[data-confirm-purge]');
+      deleting=true; ok.disabled=true; confirmDialog.setAttribute('aria-busy','true');
+      try{
+        const result=await api('delete',{id:pendingDelete.id,purge:purge.checked?'1':''});
+        confirmDialog.close();
+        notice(result.warning || '照片已删除。', result.warning ? 'info' : 'success');
+        await refresh();
+      }catch(e){
+        $('[data-confirm-error]').textContent=e.message; $('[data-confirm-error]').focus();
+      }finally{deleting=false;ok.disabled=false;confirmDialog.removeAttribute('aria-busy');}
+    });
+    $('[data-editor-delete]').addEventListener('click',()=>{
+      if(!editing||editing.kind!=='photo'||$('[data-save]').disabled)return;
+      const record=editing.record; editing=null; $('[data-discard]').hidden=true; dialog.close();
+      askDelete(record);
+    });
     $('[data-save]').addEventListener('click',async()=>{
       const b=$('[data-save]'); const inputValues=values();
       const invalid=[...$('[data-editor-fields]').querySelectorAll('[data-key]')].find(i=>!i.validity.valid);
-      if (invalid) { invalid.setAttribute('aria-invalid','true'); $('[data-editor-error]').textContent=invalid.type==='date'?'请填写有效的拍摄日期，或清空日期。':'请填写相册名称。';invalid.focus();return; }
+      if (invalid) { invalid.setAttribute('aria-invalid','true'); $('[data-editor-error]').textContent=invalid.dataset.key==='captured'?'请填写有效的拍摄日期，或清空日期。':'请填写相册名称。';invalid.focus();return; }
       b.disabled=true; dialog.setAttribute('aria-busy','true');
       const payload={id:editing.record.id||'',revision:editing.record.revision||0,...inputValues};
       const kind=editing.kind;

@@ -33,6 +33,7 @@ final class Action extends \Widget\Base implements \Widget\ActionInterface
                     break;
                 case 'album': $data = $repo->saveAlbum($input); break;
                 case 'photo': $repo->savePhoto($input); break;
+                case 'delete': $data = (new Removal($repo, Settings::read()))->delete((string) ($input['id'] ?? ''), !empty($input['purge'])); break;
                 case 'status': $data = $repo->uploadStatus((string) $this->request->get('task')); break;
                 case 'prepare': case 'upload': case 'recover':
                     $config = Settings::cloud();

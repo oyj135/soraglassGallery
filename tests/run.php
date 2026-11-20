@@ -7,6 +7,7 @@ define('__TYPECHO_THEME_DIR__', '/usr/themes');
 require_once $typecho . '/var/Typecho/Common.php';
 require_once dirname(__DIR__) . '/bootstrap.php';
 
+use TypechoPlugin\SoraglassGallery\Removal;
 use TypechoPlugin\SoraglassGallery\Repository;
 use TypechoPlugin\SoraglassGallery\Settings;
 use TypechoPlugin\SoraglassGallery\Upload;
@@ -117,7 +118,26 @@ try {
     $current = $repo->get('photos', $p['id']);
     $repo->savePhoto(['id' => $p['id'], 'revision' => $current['revision'], 'album' => $album['id'], 'captured' => '', 'tags' => '']);
     check($repo->get('albums', $other['id'])['cover'] === '' && $repo->get('photos', $p['id'])['captured'] === '', 'moving cover clears old album reference; empty date persists');
-    check(!method_exists($repo, 'removePhoto'), 'upload-record removal capability retired');
+    // 删除：默认连云端对象一起删；只删记录时保留原图；跨配置的照片绝不误删。
+    $doomed = $prepare(); $service->send($doomed['task'], $photoFile);
+    $doomedPhoto = $repo->get('photos', $doomed['photo']);
+    $repo->savePhoto(['id' => $doomedPhoto['id'], 'revision' => $doomedPhoto['revision'], 'album' => $other['id'], 'setCover' => 1]);
+    check($repo->get('albums', $other['id'])['cover'] === $doomedPhoto['id'], 'photo can become an album cover before deletion');
+    $result = (new Removal($repo, $config, static fn(array $target) => $driver))->delete($doomedPhoto['id'], true);
+    check($result['remote'] && !isset($driver->objects[$doomedPhoto['object_key']]), 'deleting a photo also removes its cloud object');
+    check($repo->get('photos', $doomedPhoto['id'])['state'] === 'removed' && !$repo->get('photos', $doomedPhoto['id'])['published'], 'deleted photo leaves the library and the public gallery');
+    check($repo->get('albums', $other['id'])['cover'] === '', 'deleting the cover photo releases the album reference');
+    check(!in_array($doomedPhoto['id'], array_column($repo->photos()['photos'], 'id'), true), 'deleted records are filtered from the admin list');
+    check((new Removal($repo, $config, static fn(array $target) => $driver))->delete($doomedPhoto['id'], true)['warning'] === '照片已不在相册中', 'repeated deletion is idempotent');
+    $keptRecord = $prepare(); $service->send($keptRecord['task'], $photoFile);
+    $keptPhoto = $repo->get('photos', $keptRecord['photo']);
+    $keptResult = (new Removal($repo, $config, static fn(array $target) => $driver))->delete($keptPhoto['id'], false);
+    check(isset($driver->objects[$keptPhoto['object_key']]) && str_contains($keptResult['warning'], '保留'), 'record-only deletion keeps the original in the bucket');
+    $abroad = $prepare(); $service->send($abroad['task'], $photoFile);
+    $abroadPhoto = $repo->get('photos', $abroad['photo']);
+    $foreignSettings = $config; $foreignSettings['bucket'] = 'old-1250000000'; $foreignSettings['profile'] = Settings::profile($foreignSettings);
+    $foreign = (new Removal($repo, $foreignSettings, static fn(array $target) => $driver))->delete($abroadPhoto['id'], true);
+    check(!$foreign['remote'] && isset($driver->objects[$abroadPhoto['object_key']]) && str_contains($foreign['warning'], '手动清理'), 'photos from another bucket are never deleted with the current credentials');
     $auto = $service->prepare(['name' => 'auto.png', 'bytes' => filesize($photoFile)], 1);
     check($repo->get('photos', $auto['photo'])['album'] !== '', 'upload can choose a default album');
     check(Registry::publicUrl($config, 'gallery/a b.png') === 'https://photos-1250000000.cos.ap-guangzhou.myqcloud.com/gallery/a%20b.png', 'COS public URL');
