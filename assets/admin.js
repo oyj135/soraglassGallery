@@ -13,6 +13,37 @@
     const body = values => { const f = new FormData(); Object.entries(values).forEach(([k,v]) => f.append(k,v)); if(root.dataset.csrf)f.set('_',root.dataset.csrf); return f; };
     const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
     const size = bytes => Number(bytes) < 1048576 ? `${Math.ceil(Number(bytes)/1024)} KB` : `${(Number(bytes)/1048576).toFixed(1)} MB`;
+    // 上传前转 WebP（质量 80）。放在浏览器端做：prepare 报的 bytes 与 send 发的
+    // 就是转换后的同一个 Blob，PHP 侧「大小 + sha256」校验链条一行都不用改；
+    // object_key 的扩展名取自文件名，也会自动变成 .webp。
+    // 只转浏览器能安全解码的位图：gif 用 canvas 会丢帧变成静图，svg 无需转，
+    // heic 等解不了 —— 一律原样上传，绝不为了统一格式把照片弄坏。
+    const WEBP_QUALITY = .8;
+    const convert = file => /^image\/(jpeg|png|webp|avif|bmp)$/.test(file.type) && file.size > 65536;
+    function optimize(file) {
+      if (!convert(file)) return Promise.resolve(file);
+      return new Promise(resolve => {
+        const img = new Image(); const src = URL.createObjectURL(file);
+        const done = result => { URL.revokeObjectURL(src); resolve(result); };
+        img.onload = () => {
+          const w = img.naturalWidth, h = img.naturalHeight;
+          // 单边 16384 是 Chrome 画布上限；面积再往上（>6000 万像素）直接放弃转换，
+          // 免得为了转格式把标签页拖崩。放弃时走原图，上传照常。
+          if (!w || !h || w * h > 6e7) { done(file); return; }
+          const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img, 0, 0);
+          canvas.toBlob(blob => {
+            // 老 Safari 不支持 webp 编码时 toBlob 会静默回退成 png：认 type 不认后缀。
+            // 转完反而更大（小图 / 已高度压缩的 jpg 常见）也退回原图。
+            if (!blob || blob.type !== 'image/webp' || blob.size >= file.size) { done(file); return; }
+            done(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp', lastModified: file.lastModified }));
+          }, 'image/webp', WEBP_QUALITY);
+        };
+        // 解码失败（heic、损坏文件、超大面积）同样退回原图。
+        img.onerror = () => done(file);
+        img.src = src;
+      });
+    }
     // Only the gallery workspace breaks out of the narrow theme settings form.
     function layout() {
       if (root.closest('form')) {
@@ -351,7 +382,16 @@
         const poll=setInterval(async()=>{if(polling||!item.task)return;polling=true;try{const status=await api('status',null,{task:item.task.task});if(active&&!item.done&&status.state==='uploading')updateItem(item,status);}catch{}finally{polling=false;}},2000);
         try {
           item.status.textContent='准备上传…';
-          if(!item.task)item.task=await api('prepare',{...metadata,name:item.file.name,bytes:item.file.size});
+          if(!item.task){
+            // 只转一次：失败重试时不再对同一个文件重复解码。
+            if(!item.prepared){
+              item.prepared=true;
+              item.status.textContent='正在转换为 WebP…';
+              const source=item.file; item.file=await optimize(source);
+              if(item.file!==source)item.message.textContent=`已转 WebP · ${size(source.size)} → ${size(item.file.size)}`;
+            }
+            item.task=await api('prepare',{...metadata,name:item.file.name,bytes:item.file.size});
+          }
           const result=await send(item.task.task,item.file,n=>{if(n>=100)item.progress.removeAttribute('value');else item.progress.value=n;item.status.textContent=n>=100?'云端写入 / 校验中…':`发送照片 ${n}%`;});
           updateItem(item,result);
           if(!item.done)await reconcile(item,new Error('正在等待云端确认'));
