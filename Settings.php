@@ -18,7 +18,7 @@ final class Settings
 
     public static function defaults(): array
     {
-        return ['provider' => 'cos', 'bucket' => '', 'region' => '', 'endpoint' => '', 'domain' => '', 'keyId' => '', 'keySecret' => '', 'prefix' => 'gallery', 'timeout' => '300'];
+        return ['provider' => 'cos', 'bucket' => '', 'region' => '', 'endpoint' => '', 'domain' => '', 'keyId' => '', 'keySecret' => '', 'prefix' => 'gallery', 'timeout' => '300', 'webpQuality' => '75'];
     }
 
     public static function cloud(): array
@@ -130,6 +130,8 @@ final class Settings
         }
         if (!preg_match('#^[a-zA-Z0-9/_-]+$#', trim($settings['prefix'] ?? 'gallery', '/'))) { throw new \InvalidArgumentException('对象目录仅使用字母、数字、斜杠、下划线或连字符'); }
         if ((int) ($settings['timeout'] ?? 0) < 30 || (int) $settings['timeout'] > 3600) { throw new \InvalidArgumentException('上传超时应在 30–3600 秒之间'); }
+        // 40 以下暗部开始出色带、边缘发糊；95 以上几乎等于不压缩，没有意义。
+        if ((int) ($settings['webpQuality'] ?? 0) < 40 || (int) $settings['webpQuality'] > 95) { throw new \InvalidArgumentException('WebP 质量应在 40–95 之间（推荐 75）'); }
     }
 
     private static function encryptionKey(): string

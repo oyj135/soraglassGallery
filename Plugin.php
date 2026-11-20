@@ -53,6 +53,7 @@ final class Plugin implements PluginInterface
             'domain' => ['图片访问域名（可选）', '填写 CDN / 自定义域名或带路径的 HTTPS 前缀。同一存储目标的历史照片也使用此域名；CDN 需转发云端图片处理查询参数。'],
             'prefix' => ['对象目录', '默认 gallery，按上传年月生成唯一路径。'],
             'timeout' => ['上传超时（秒）', '30–3600，默认 300；还需匹配 PHP / Nginx 配置。'],
+            'webpQuality' => ['WebP 质量', '40–95，默认 75。上传前在浏览器里转 WebP 时使用；越低体积越小，70 以下暗部可能出色带，85 以上几乎等于不压缩。'],
         ];
         foreach ($labels as $key => [$label, $help]) {
             $form->addInput(new \Typecho\Widget\Helper\Form\Element\Text($key, null, Settings::defaults()[$key], $label, $help));

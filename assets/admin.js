@@ -18,29 +18,34 @@
     // object_key 的扩展名取自文件名，也会自动变成 .webp。
     // 只转浏览器能安全解码的位图：gif 用 canvas 会丢帧变成静图，svg 无需转，
     // heic 等解不了 —— 一律原样上传，绝不为了统一格式把照片弄坏。
-    const WEBP_QUALITY = .8;
+    // 返回 {file, note}：note 空 = 本来就不该转（gif/svg/heic/小图，静默跳过）；
+    // note 有内容 = 本次转换结果或放弃原因，显示在队列行，便于核对是否真的生效。
+    // 质量在插件配置里可调（40–95，默认 75）：75 是「看不出差别」的最低档，
+    // 再低（70 以下）暗部会出色带、边缘发糊，相册这种大图展示看得出来。
+    const WEBP_QUALITY = Math.min(95, Math.max(40, Number(root.dataset.webpQuality) || 75)) / 100;
     const convert = file => /^image\/(jpeg|png|webp|avif|bmp)$/.test(file.type) && file.size > 65536;
     function optimize(file) {
-      if (!convert(file)) return Promise.resolve(file);
+      if (!convert(file)) return Promise.resolve({ file, note: '' });
       return new Promise(resolve => {
         const img = new Image(); const src = URL.createObjectURL(file);
-        const done = result => { URL.revokeObjectURL(src); resolve(result); };
+        const done = (result, note = '') => { URL.revokeObjectURL(src); resolve({ file: result, note }); };
         img.onload = () => {
           const w = img.naturalWidth, h = img.naturalHeight;
           // 单边 16384 是 Chrome 画布上限；面积再往上（>6000 万像素）直接放弃转换，
           // 免得为了转格式把标签页拖崩。放弃时走原图，上传照常。
-          if (!w || !h || w * h > 6e7) { done(file); return; }
+          if (!w || !h || w * h > 6e7) { done(file, '保持原图 · 尺寸过大，浏览器内转不了'); return; }
           const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img, 0, 0);
           canvas.toBlob(blob => {
             // 老 Safari 不支持 webp 编码时 toBlob 会静默回退成 png：认 type 不认后缀。
-            // 转完反而更大（小图 / 已高度压缩的 jpg 常见）也退回原图。
-            if (!blob || blob.type !== 'image/webp' || blob.size >= file.size) { done(file); return; }
-            done(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp', lastModified: file.lastModified }));
+            if (!blob) { done(file, '保持原图 · 浏览器未能生成图片'); return; }
+            if (blob.type !== 'image/webp') { done(file, '保持原图 · 当前浏览器不支持 WebP 编码'); return; }
+            if (blob.size >= file.size) { done(file, `保持原图 · 转 WebP 后没变小（${size(file.size)}）`); return; }
+            done(new File([blob], file.name.replace(/\.[^.]+$/, '') + '.webp', { type: 'image/webp', lastModified: file.lastModified }), `已转 WebP · ${size(file.size)} → ${size(blob.size)}`);
           }, 'image/webp', WEBP_QUALITY);
         };
         // 解码失败（heic、损坏文件、超大面积）同样退回原图。
-        img.onerror = () => done(file);
+        img.onerror = () => done(file, '保持原图 · 浏览器无法解码该格式');
         img.src = src;
       });
     }
@@ -308,7 +313,9 @@
       if(result.state==='uploading')item.progress.removeAttribute('value');
       item.row.dataset.state=result.state; item.progress.hidden=item.done;
       if (item.done) item.progress.value=100;
-      item.message.textContent=item.error;
+      // item.error 优先；没有错误时保留格式转换结果，上传完成后仍能看到「已转 WebP · x → y」，
+      // 否则这条唯一能证明转换生效的线索会在状态刷新的瞬间被清掉。
+      item.message.textContent=item.error||item.convertNote||'';
     }
     function queueRender() {
       $('[data-queue]').hidden=false;
@@ -387,8 +394,8 @@
             if(!item.prepared){
               item.prepared=true;
               item.status.textContent='正在转换为 WebP…';
-              const source=item.file; item.file=await optimize(source);
-              if(item.file!==source)item.message.textContent=`已转 WebP · ${size(source.size)} → ${size(item.file.size)}`;
+              const {file:next,note}=await optimize(item.file);
+              item.file=next; item.convertNote=note; item.message.textContent=note;
             }
             item.task=await api('prepare',{...metadata,name:item.file.name,bytes:item.file.size});
           }

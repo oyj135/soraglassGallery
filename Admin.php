@@ -16,7 +16,7 @@ final class Admin
         ob_start();
         ?>
         <link rel="stylesheet" href="<?php echo $e($assets . 'admin.css?v=' . hash_file('sha256', __DIR__ . '/assets/admin.css')); ?>">
-        <section class="sgga" data-sgga data-endpoint="<?php echo $e($url); ?>" data-csrf="<?php echo $e(\Widget\Security::alloc()->getToken('SoraglassGallery/admin')); ?>" data-upload-timeout="<?php echo (int) $settings['timeout']; ?>">
+        <section class="sgga" data-sgga data-endpoint="<?php echo $e($url); ?>" data-csrf="<?php echo $e(\Widget\Security::alloc()->getToken('SoraglassGallery/admin')); ?>" data-upload-timeout="<?php echo (int) $settings['timeout']; ?>" data-webp-quality="<?php echo (int) $settings['webpQuality']; ?>">
           <div class="sgga-heading"><div><h2>光影画廊</h2><p>管理相册与照片，收藏每一次光影。</p></div><a href="<?php echo $e($config); ?>">云存储设置 ↗</a></div>
           <?php if (!$configured): ?><p class="sgga-error">请先在插件配置中填写云存储与凭据，再上传照片。</p><?php endif; ?>
           <div id="sgga-alert" class="sgga-alert" role="status" aria-live="polite" data-alert hidden></div>
