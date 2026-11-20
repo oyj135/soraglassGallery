@@ -133,7 +133,7 @@ html[data-sgga-page]{scroll-padding-bottom:120px}html[data-sgga-page] .sgga[data
 .sgga-topbar-site{padding-left:12px;border-left:1px solid var(--ga-border);color:var(--ga-muted);max-width:40ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sgga[data-sgga] .sgga-topbar .sgga-config{margin-left:auto;color:var(--ga-accent)}
 /* 后台主题在页脚渲染的「站点名 / 返回控制台」在工作台里是重复信息，页首已经给过 */
-body:has(.sgga-host)>footer.typecho-foot{display:none!important}
+body:has(.sgga-host) footer.typecho-foot{display:none!important}
 .sgga-dialog-actions{flex-wrap:wrap;gap:12px}
 .sgga[data-sgga] .sgga-dialog-buttons{display:flex;gap:12px;margin-left:auto}
 .sgga[data-sgga] .sgga-link-danger{background:transparent!important;border:0!important;color:var(--ga-error)!important;padding:4px 0!important;min-height:0;font-size:13px}
