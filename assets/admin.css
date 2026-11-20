@@ -181,3 +181,23 @@ body:has(.sgga-host) footer.typecho-foot{display:none!important}
   .sgga-toolbar-photos>div{flex-wrap:wrap;gap:8px;max-width:100%;min-width:0}
   .sgga[data-sgga] .sgga-view button{padding:5px 8px!important;font-size:11px}
 }
+
+/* 第 1 条：选文件与上传两个主按钮并到同一行右侧，顺序即操作顺序；提示文字靠左 */
+.sgga-upload-foot>span{margin-right:auto}
+@media(max-width:600px){.sgga-upload-foot{flex-wrap:wrap}.sgga-upload-foot>span{max-width:100%;margin-right:0}}
+
+/* 第 4 条：状态从操作行挪到图片左上角，卡片少一行；深底白字在明暗照片上都成立 */
+.sgga-photo-preview{position:relative}
+.sgga-photo-badge{position:absolute;top:8px;left:8px;z-index:2;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:600;line-height:1.7;color:#fff;background:rgba(10,18,24,.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);pointer-events:none}
+.sgga-photo-badge[data-state=uploaded]{background:rgba(22,102,71,.86)}
+.sgga-photo-badge[data-state=failed],.sgga-photo-badge[data-state=unknown]{background:rgba(138,46,38,.86)}
+.sgga-photos[data-view=list] .sgga-photo-badge{top:4px;left:4px;padding:1px 5px;font-size:10px}
+
+/* 第 5 条：相册删除确认没有缩略图和勾选项，单列排版 */
+.sgga[data-sgga] dialog[data-confirm][data-kind=album] .sgga-confirm-body{grid-template-columns:1fr}
+
+/* 列表视图：小图 96px 放角标会占掉近一半画面，改成操作行前面的文字；网格视图只留角标 */
+.sgga-photo-status{display:none}
+.sgga-photos[data-view=list] .sgga-photo-status{display:inline;font-size:12px;color:var(--ga-muted)}
+.sgga-photos[data-view=list] .sgga-photo-status[data-state=uploaded]{color:var(--ga-success)}
+.sgga-photos[data-view=list] .sgga-photo-badge{display:none}

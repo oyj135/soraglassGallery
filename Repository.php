@@ -52,13 +52,17 @@ final class Repository
         return $this->rows($this->db->select()->from('table.sg_gallery_albums')->order('featured', Db::SORT_DESC)->order('sort')->order('created', Db::SORT_DESC));
     }
 
-    public function photos(int $page = 1, string $album = '', int $perPage = 30): array
+    public function photos(int $page = 1, string $album = '', int $perPage = 30, string $sort = 'captured'): array
     {
         $perPage = max(6, min(60, $perPage));
         $q = $this->db->select()->from('table.sg_gallery_photos')->where('state <> ?', 'removed');
         if ($album !== '') { $q->where('album = ?', $album); }
         $total = (int) $this->row((clone $q)->select('COUNT(*) AS n'))['n'];
-        $rows = $this->rows($q->order('created', Db::SORT_DESC)->order('id', Db::SORT_DESC)->page($page, $perPage));
+        // 排序只认这三列，避免把用户输入拼进 ORDER BY。文件名按字典序升序更像文件管理器。
+        if (!in_array($sort, ['captured', 'created', 'name'], true)) { $sort = 'captured'; }
+        if ($sort === 'name') { $q->order('name', Db::SORT_ASC)->order('id', Db::SORT_ASC); }
+        else { $q->order($sort, Db::SORT_DESC)->order('id', Db::SORT_DESC); }
+        $rows = $this->rows($q->page($page, $perPage));
         $tasks = [];
         if ($rows) { foreach ($this->rows($this->db->select()->from('table.sg_gallery_tasks')->where('photo IN ?', array_column($rows, 'id'))) as $task) { $tasks[$task['photo']] = $task; } }
         $delivery = Settings::read();
@@ -119,6 +123,17 @@ final class Repository
                 $this->update('albums', $photo['album'], ['published' => 1]);
             }
         });
+    }
+
+    /** 只允许删空相册：有照片时先让用户决定照片去向，避免一次误操作丢一批记录。 */
+    public function deleteAlbum(string $id): array
+    {
+        $album = $this->get('albums', $id);
+        $count = (int) $this->row($this->db->select('COUNT(*) AS n')->from('table.sg_gallery_photos')->where('album = ?', $id)->where('state <> ?', 'removed'))['n'];
+        if ($count > 0) { throw new \InvalidArgumentException('这本相册里还有 ' . $count . ' 张照片，先把它们删掉或移到其他相册，再删相册。'); }
+        $this->db->query($this->db->delete('table.sg_gallery_albums')->where('id = ?', $id));
+        $this->invalidate();
+        return ['id' => $id, 'title' => $album['title'], 'deleted' => true];
     }
 
     public function saveAlbum(array $input): array

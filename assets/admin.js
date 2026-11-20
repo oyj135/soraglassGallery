@@ -8,6 +8,8 @@
     const states = {pending:'等待上传', uploading:'正在上传', uploaded:'已上传', failed:'上传失败', unknown:'结果待核查', removed:'已删除'};
     const notice = (text, tone = 'info', source = '') => { $('[data-alert]').textContent = text; $('[data-alert]').hidden = !text; $('[data-alert]').dataset.tone = tone; $('[data-alert]').dataset.source=source; };
     let albums = [], photos = [], page = 1, pages = 1, queue = [], busy = false, batchFinished = false, editing = null, refreshVersion = 0, fieldId = 0;
+    // 相册筛选由左栏控制，右侧下拉改成排序；两者都不再共用一个 select。
+    let filter = '', sortBy = 'captured';
     // 移动端是单列，30 条要滑 8 屏才够到分页；每页 12 条。白名单校验在服务端。
     const mqNarrow = window.matchMedia('(max-width: 640px)');
     const perPage = () => mqNarrow.matches ? 12 : 30;
@@ -99,18 +101,16 @@
     function effectiveState(p) { return p.state === 'uploaded' ? 'uploaded' : p.task?.state || p.state; }
     async function refresh() {
       const version = ++refreshVersion;
-      const filter = $('[data-filter]').value;
       $('[data-photos]').setAttribute('aria-busy','true');
       try {
-        let data = await api('list', null, {page, album:filter, per:perPage()});
+        let data = await api('list', null, {page, album:filter, per:perPage(), sort:sortBy});
         if (version !== refreshVersion) return;
-        if (page > data.pages) { page = data.pages; data = await api('list', null, {page, album:filter, per:perPage()}); if (version !== refreshVersion) return; }
+        if (page > data.pages) { page = data.pages; data = await api('list', null, {page, album:filter, per:perPage(), sort:sortBy}); if (version !== refreshVersion) return; }
         albums = data.albums; photos = data.photos; pages = data.pages;
         options($('[data-upload-album]'), $('[data-upload-album]').value);
-        options($('[data-filter]'), filter, true);
         $('[data-albums]').replaceChildren(...albums.map(a => {
           const row=el('div',null,'sgga-album-row');
-          const b=button('',()=>{$('[data-filter]').value=a.id;$('[data-upload-album]').value=a.id;page=1;refresh();},'sgga-album');
+          const b=button('',()=>{filter=a.id;$('[data-upload-album]').value=a.id;page=1;refresh();},'sgga-album');
           b.dataset.albumId=a.id;b.setAttribute('aria-current',filter===a.id?'true':'false');b.append(el('strong',a.title));if(+a.featured)b.append(el('small','精选'));
           const edit=button('⋯',()=>editAlbum(a),'sgga-album-edit');edit.setAttribute('aria-label',`编辑相册：${a.title}`);
           row.append(b,edit);return row;
@@ -127,12 +127,14 @@
       } catch(e) { if (version === refreshVersion) notice(e.message,'error'); }
       finally { if (version === refreshVersion) { $('[data-photos]').setAttribute('aria-busy','false'); root.dataset.settled='1';document.dispatchEvent(new Event('sgga:settled')); } }
     }
-    function preview(p, cls) {
+    function preview(p, cls, badge) {
       const box = el('div',null,cls);
       if (+p.preview && p.state === 'uploaded') {
         const img = el('img'); img.src = p.thumb || p.url; img.alt = p.caption || p.name; img.loading = 'lazy';
         let fallback=false;img.addEventListener('error',()=>{if(!fallback&&img.src!==p.url){fallback=true;img.src=p.url;}else box.replaceChildren(el('span','预览暂不可用，可打开原文件'));}); box.append(img);
       } else box.append(el('span',p.state === 'uploaded' ? '原文件收藏' : '等待照片上传'));
+      // 状态做成图片左上角小徽章：卡片少一行文字，扫视时也不必读到操作行末尾
+      if (badge) { const tag=el('span',badge.text,'sgga-photo-badge'); tag.dataset.state=badge.state; box.append(tag); }
       return box;
     }
     function details(p) {
@@ -154,8 +156,10 @@
       const state = effectiveState(p);
       info.append(el('p',`${albums.find(a=>a.id===p.album)?.title || '相册'}${p.captured ? ' · ' + p.captured : ''}`,'sgga-meta'));
       const foot = el('div',null,'sgga-photo-foot');
-      foot.append(el('span',state === 'uploaded' ? (+p.published ? '已展示' : '已上传') : states[state] || state,'sgga-status'));
       foot.dataset.state = state;
+      // 网格视图用图片角标；列表视图小图上放角标太抢眼，改用这一行文字（CSS 二选一显示）
+      const badgeText = state === 'uploaded' ? (+p.published ? '已展示' : '已上传') : (states[state] || state);
+      const stateTag = el('span',badgeText,'sgga-photo-status'); stateTag.dataset.state=state; foot.append(stateTag);
       foot.append(button('编辑',()=>editPhoto(p)));
       if (p.state === 'uploaded') { const a = el('a','原图'); a.href=p.url; a.target='_blank'; a.rel='noopener noreferrer'; foot.append(a); }
       const remove=button('删除',()=>askDelete(p),'sgga-photo-delete');remove.setAttribute('aria-label',`删除照片：${p.caption||p.name}`);foot.append(remove);
@@ -179,7 +183,8 @@
           }); picker.click();
         })); info.append(actions);
       }
-      info.append(details(p)); row.append(preview(p,'sgga-photo-preview'),info); return row;
+      info.append(details(p));
+      row.append(preview(p,'sgga-photo-preview',{text:badgeText,state}),info); return row;
     }
     // 日期字段：整块可点、弹出自己绘制的日历。原生 input[type=date] 在中文环境下是
     // 「年/月/日」三段占位，点框不弹窗，还得在旁边摆「日历 / 清空」两个按钮才可用；
@@ -297,7 +302,9 @@
     function openEditor(kind, record, title) {
       editing={kind,record,focus:document.activeElement}; $('[data-editor-fields]').replaceChildren(); $('[data-editor-preview]').replaceChildren(); $('[data-editor-preview]').hidden=true;
       $('[data-editor-error]').textContent=''; $('[data-discard]').hidden=true; $('#sgga-editor-title').textContent=title;
-      $('[data-editor-delete]').hidden = kind !== 'photo';
+      // 相册也能删，新建时没有 id 所以不给
+      $('[data-editor-delete]').hidden = !(kind === 'photo' || record.id);
+      $('[data-editor-delete]').textContent = kind === 'photo' ? '删除这张照片' : '删除这本相册';
     }
     function showEditor() { editing.original=JSON.stringify(values()); dialog.showModal(); $('[data-editor-fields] input, [data-editor-fields] textarea, [data-editor-fields] select')?.focus(); }
     function editAlbum(a = {}) {
@@ -333,13 +340,28 @@
     const confirmDialog=$('[data-confirm]');
     let pendingDelete=null, deleting=false;
     function askDelete(p){
-      pendingDelete=p;
+      pendingDelete={...p,kind:'photo'};
+      confirmDialog.dataset.kind='photo';
+      $('#sgga-confirm-title').textContent='删除照片'; $('[data-confirm-ok]').textContent='删除照片';
+      $('[data-confirm-purge-wrap]').hidden=false; $('[data-confirm-preview]').hidden=false;
       const purge=$('[data-confirm-purge]');
       purge.checked=!!p.object_key; purge.disabled=!p.object_key;
       $('[data-confirm-text]').textContent=`将删除「${p.caption||p.name}」${p.captured?`（${p.captured} 拍摄）`:''}。`;
       $('[data-confirm-preview]').replaceChildren(preview(p,'sgga-confirm-image'));
       $('[data-confirm-error]').textContent='';
       $('[data-confirm-note]').textContent = p.object_key ? '关闭此选项只从相册移除记录，云端原图仍会保留。' : '这条记录没有云端文件，删除只会移除相册记录。';
+      confirmDialog.showModal(); $('[data-confirm-cancel]').focus();
+    }
+    // 相册只允许删空的：确认框里不给「连照片一起删」，语义比照片删除简单得多。
+    function askDeleteAlbum(a){
+      pendingDelete={...a,kind:'album'};
+      confirmDialog.dataset.kind='album';
+      $('#sgga-confirm-title').textContent='删除相册'; $('[data-confirm-ok]').textContent='删除相册';
+      $('[data-confirm-purge-wrap]').hidden=true; $('[data-confirm-preview]').hidden=true;
+      $('[data-confirm-preview]').replaceChildren();
+      $('[data-confirm-text]').textContent=`将删除相册「${a.title}」。`;
+      $('[data-confirm-note]').textContent='相册里还有照片时无法删除；请先把照片删掉或移到其他相册。';
+      $('[data-confirm-error]').textContent='';
       confirmDialog.showModal(); $('[data-confirm-cancel]').focus();
     }
     function closeConfirm(){ if(deleting)return; confirmDialog.close(); }
@@ -353,18 +375,23 @@
       const ok=$('[data-confirm-ok]'), purge=$('[data-confirm-purge]');
       deleting=true; ok.disabled=true; confirmDialog.setAttribute('aria-busy','true');
       try{
-        const result=await api('delete',{id:pendingDelete.id,purge:purge.checked?'1':''});
+        const kind=pendingDelete.kind;
+        const result=kind==='album'
+          ? await api('album-delete',{id:pendingDelete.id})
+          : await api('delete',{id:pendingDelete.id,purge:purge.checked?'1':''});
+        // 删掉的正是当前筛选的相册时回全部照片，否则列表会停在空结果上
+        if(kind==='album'&&filter===pendingDelete.id)filter='';
         confirmDialog.close();
-        notice(result.warning || '照片已删除。', result.warning ? 'info' : 'success');
+        notice(kind==='album' ? '相册已删除。' : (result.warning || '照片已删除。'), kind==='album' || !result.warning ? 'success' : 'info');
         await refresh();
       }catch(e){
         $('[data-confirm-error]').textContent=e.message; $('[data-confirm-error]').focus();
       }finally{deleting=false;ok.disabled=false;confirmDialog.removeAttribute('aria-busy');}
     });
     $('[data-editor-delete]').addEventListener('click',()=>{
-      if(!editing||editing.kind!=='photo'||$('[data-save]').disabled)return;
-      const record=editing.record; editing=null; $('[data-discard]').hidden=true; dialog.close();
-      askDelete(record);
+      if(!editing||$('[data-save]').disabled)return;
+      const {kind,record}=editing; editing=null; $('[data-discard]').hidden=true; dialog.close();
+      if(kind==='photo')askDelete(record);else askDeleteAlbum(record);
     });
     $('[data-save]').addEventListener('click',async()=>{
       const b=$('[data-save]'); const inputValues=values();
@@ -385,7 +412,7 @@
       } finally { b.disabled=false; dialog.removeAttribute('aria-busy'); }
     });
     $('[data-new-album]').addEventListener('click',()=>editAlbum());
-    $('[data-all-photos]').addEventListener('click',()=>{$('[data-filter]').value='';page=1;refresh();});
+    $('[data-all-photos]').addEventListener('click',()=>{filter='';page=1;refresh();});
     function updateItem(item, result) {
       if (!item.status) return;
       item.state=result.state; item.error=result.error || '';
@@ -457,8 +484,8 @@
       if(!date || !album){notice('上传界面未完整加载，请刷新页面后重试。','error');return;}
       if(!date.validity.valid){notice('请填写有效的拍摄日期，或清空日期。','error');date.focus();return;}
       const metadata={album:album.value,captured:date.value};
-      const filter=$('[data-filter]').value,previousPage=page;
-      const controls=[...['[data-upload]','[data-files]','[data-pick]','[data-upload-fields]','[data-filter]','[data-prev]','[data-next]','[data-all-photos]'].map($).filter(Boolean),...root.querySelectorAll('[data-queue-remove],.sgga-album')];const disabled=controls.map(c=>c.disabled);
+      const previousPage=page;
+      const controls=[...['[data-upload]','[data-files]','[data-pick]','[data-upload-fields]','[data-sort]','[data-prev]','[data-next]','[data-all-photos]'].map($).filter(Boolean),...root.querySelectorAll('[data-queue-remove],.sgga-album')];const disabled=controls.map(c=>c.disabled);
       busy=true;
       try {
       controls.forEach(control=>control.disabled=true); notice('正在准备上传…');
@@ -499,12 +526,12 @@
       batchFinished=true;batchSummary(true);
       $('[data-upload]').disabled=true;
       const outside=!!filter&&queue.some(item=>item.done&&item.album!==filter);
-      page=outside?1:previousPage; $('[data-filter]').value=outside?'':filter;await refresh();
+      page=outside?1:previousPage; if(outside)filter='';await refresh();
       if(outside){const item=queue.find(item=>item.done&&item.album!==filter);const photo=root.querySelector(`[data-photo="${item?.task?.photo}"]`);photo?.scrollIntoView({block:'center',behavior:'smooth'});photo?.classList.add('sgga-photo--new');notice('新照片属于其他相册，已切换到全部照片并定位。');}
     }
     $('[data-upload]').addEventListener('click',uploadQueue);
     $('[data-refresh]').addEventListener('click',()=>{notice('');refresh();});
-    $('[data-filter]').addEventListener('change',()=>{if($('[data-filter]').value)$('[data-upload-album]').value=$('[data-filter]').value;page=1;refresh();});
+    $('[data-sort]').addEventListener('change',()=>{sortBy=$('[data-sort]').value;page=1;refresh();});
     $('[data-prev]').addEventListener('click',()=>{if(page>1){page--;refresh();}});
     $('[data-next]').addEventListener('click',()=>{if(page<pages){page++;refresh();}});
     // 视图切换只改容器上的 data-view，卡片 DOM 不重建，因此不触发任何取数。

@@ -34,6 +34,11 @@ $many = $repo->saveAlbum(['title' => '分页相册']);
 for ($i = 0; $i < 65; $i++) {
     $row = $completed; $row['id'] = Repository::id(); $row['album'] = $many['id']; $row['caption'] = '分页照片 ' . $i; $row['captured'] = '2026-11-01'; $row['created'] = 100000 + $i; $repo->insert('photos', $row);
 }
+$emptyAlbum = $repo->saveAlbum(['title' => '待删相册']);
+$refused = false;
+try { $repo->deleteAlbum($many['id']); } catch (\InvalidArgumentException $e) { $refused = str_contains($e->getMessage(), '65'); }
+check($refused, 'album with photos refuses deletion and reports the count');
+check($repo->deleteAlbum($emptyAlbum['id'])['deleted'] === true && !in_array($emptyAlbum['id'], array_column($repo->albums(), 'id'), true), 'empty album is removed from the list');
 $paged = $repo->photos(1, $many['id'], 12);
 check(count($paged['photos']) === 12 && $paged['pages'] === 6 && $repo->photos(1, $many['id'])['pages'] === 3, 'admin page size is honoured and the page count follows it');
 $catalog = $repo->catalog(); $first = $catalog->photos($many['id']); $second = $catalog->photos($many['id'], 2);

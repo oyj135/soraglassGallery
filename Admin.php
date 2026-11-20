@@ -31,14 +31,14 @@ final class Admin
           <div class="sgga-albums" data-albums aria-label="相册设置"><p>正在读取相册…</p></div>
           <p class="sgga-sidebar-note">相册主题写在简介里。照片上传后自动公开。</p></aside><div class="sgga-library">
           <div class="sgga-upload" data-drop>
-            <div class="sgga-toolbar"><div><h3>添加照片</h3><p>支持分次追加照片，重复文件会自动略过。拍摄日期选填。</p></div><button type="button" data-pick>选择本机照片</button></div>
+            <div class="sgga-toolbar"><div><h3>添加照片</h3><p>支持分次追加照片，重复文件会自动略过。拍摄日期选填。</p></div></div>
             <input class="sgga-file" type="file" multiple data-files aria-label="选择本机照片" tabindex="-1">
             <fieldset data-upload-fields class="sgga-fields"><label>所属相册<select data-upload-album></select></label><div class="sgga-field"><label for="sgga-upload-date">拍摄日期</label><div class="sgga-date"><div class="sgga-date-box"><button type="button" class="sgga-date-open" data-date-open aria-haspopup="dialog" aria-expanded="false" aria-label="打开日历选择拍摄日期"><?php echo self::ICON; ?></button><input id="sgga-upload-date" type="text" readonly placeholder="选择拍摄日期" data-upload-date aria-describedby="sgga-alert"><span class="sgga-date-hint" data-date-hint aria-hidden="true"></span><button type="button" class="sgga-date-clear" data-date-clear aria-label="清空拍摄日期" hidden>×</button></div></div></div></fieldset>
             <div class="sgga-queue" data-queue aria-live="polite"></div>
-            <div class="sgga-upload-foot"><span data-selection>也可以将照片拖到这里</span><button type="button" class="sgga-primary" data-upload disabled>上传并展示</button></div>
+            <div class="sgga-upload-foot"><span data-selection>也可以将照片拖到这里</span><button type="button" data-pick>选择本机照片</button><button type="button" class="sgga-primary" data-upload disabled>上传并展示</button></div>
             <details class="sgga-help"><summary>上传说明</summary><p>照片与相册默认公开；无相册时自动创建“光影收藏”。文件格式和大小遵循云存储能力。服务器当前单文件限制 <?php echo $e(ini_get('upload_max_filesize')); ?>，请求限制 <?php echo $e(ini_get('post_max_size')); ?>；较大照片需调整 PHP / Nginx 限制。</p></details>
           </div>
-          <div class="sgga-toolbar sgga-toolbar-photos"><h3>照片 <small data-total></small></h3><div><select data-filter aria-label="筛选相册"></select><div class="sgga-view" role="group" aria-label="照片展示方式"><button type="button" data-view="grid" aria-pressed="true">网格</button><button type="button" data-view="list" aria-pressed="false">列表</button></div><button type="button" data-refresh>刷新</button></div></div>
+          <div class="sgga-toolbar sgga-toolbar-photos"><h3>照片 <small data-total></small></h3><div><select data-sort aria-label="照片排序"><option value="captured">按拍摄日期</option><option value="created">按上传时间</option><option value="name">按文件名</option></select><div class="sgga-view" role="group" aria-label="照片展示方式"><button type="button" data-view="grid" aria-pressed="true">网格</button><button type="button" data-view="list" aria-pressed="false">列表</button></div><button type="button" data-refresh>刷新</button></div></div>
           <div class="sgga-photos" data-photos aria-busy="true"><p>正在读取照片…</p></div>
           <div class="sgga-pagination"><button type="button" data-prev>上一页</button><span data-page></span><button type="button" data-next>下一页</button></div>
           </div></div>

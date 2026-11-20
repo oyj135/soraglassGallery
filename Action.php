@@ -31,9 +31,10 @@ final class Action extends \Widget\Base implements \Widget\ActionInterface
                 case 'list':
                     // 移动端单列每页 12 条；per 只接受白名单，避免被当作任意 LIMIT 使用。
                     $per = (int) $this->request->get('per');
-                    $data = $repo->photos(max(1, (int) $this->request->get('page')), (string) ($this->request->get('album') ?? ''), in_array($per, [12, 24, 30], true) ? $per : 30) + ['albums' => $repo->albums()];
+                    $data = $repo->photos(max(1, (int) $this->request->get('page')), (string) ($this->request->get('album') ?? ''), in_array($per, [12, 24, 30], true) ? $per : 30, (string) ($this->request->get('sort') ?? '')) + ['albums' => $repo->albums()];
                     break;
                 case 'album': $data = $repo->saveAlbum($input); break;
+                case 'album-delete': $data = $repo->deleteAlbum((string) ($input['id'] ?? '')); break;
                 case 'photo': $repo->savePhoto($input); break;
                 case 'delete': $data = (new Removal($repo, Settings::read()))->delete((string) ($input['id'] ?? ''), !empty($input['purge'])); break;
                 case 'status': $data = $repo->uploadStatus((string) $this->request->get('task')); break;
