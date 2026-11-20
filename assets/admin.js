@@ -93,6 +93,36 @@
     }
     layout(); window.addEventListener('resize', layout);
     new MutationObserver(layout).observe(document.documentElement, {attributes:true, attributeFilter:['class','data-theme','style']});
+    // BooAdmin 这类「替换 admin 目录」的后台主题，会给插件面板页（extending.php）额外渲染一条
+    // 品牌蓝用户条：头像 + 昵称 + 用户组 + 登出 + 返回控制台。它的底色写在主题的 Tailwind 工具类里，
+    // 读不到工作台的 --ga-*，放在深色玻璃界面下方就是一块突兀的蓝；「返回控制台」页首已经给过。
+    // 这里按「全宽 + 有底色 + 高度很小」的几何特征把最外那层容器找出来打标记，交给 CSS 隐藏，
+    // 不碰主题文件，主题升级也不会冲突。
+    function hideAdminUserBar() {
+      const alpha = node => {
+        const bg = getComputedStyle(node).backgroundColor;
+        const parts = bg.match(/[\d.]+/g);
+        if (!parts || bg === 'transparent') return 0;
+        return parts.length > 3 ? Number(parts[3]) : 1;
+      };
+      // 侧边栏底部也有一张头像卡，宽度远小于半屏，会被宽度条件排除；宽度是这里最关键的判别。
+      const hasConsoleLink = node => [...node.querySelectorAll('a')].some(a => a.textContent.includes('返回控制台'));
+      // 桌面和移动端可能各渲染一条，逐个锚点处理；同一栏被重复命中时已经 display:none，rect 归零自然不再匹配。
+      const anchors = [...document.querySelectorAll('.extend-topbar-avatar, [class*="extend-topbar"]')];
+      anchors.forEach(anchor => {
+        let node = anchor.parentElement, target = null;
+        while (node && node !== document.body && node !== document.documentElement) {
+          const rect = node.getBoundingClientRect();
+          const bar = rect.width >= innerWidth * 0.5 && rect.height > 24 && rect.height < 160;
+          // 有底色是主判据；主题若改成透明底，再用「条内有返回控制台链接」识别。
+          // 两个判据都不满足时宁可留着蓝条，也不向上多压一层——压错就是把整页藏了。
+          if (bar && (alpha(node) > 0.1 || hasConsoleLink(node))) target = node;
+          node = node.parentElement;
+        }
+        if (target) target.classList.add('sgga-boobar-hidden');
+      });
+    }
+    hideAdminUserBar(); setTimeout(hideAdminUserBar, 600);
     async function api(op, values, query = {}) {
       const u = url(op); Object.entries(query).forEach(([k,v]) => u.searchParams.set(k,v));
       const abort = new AbortController(); const timer = setTimeout(() => abort.abort(), op==='recover' ? 120000 : 20000);

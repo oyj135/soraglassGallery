@@ -121,8 +121,8 @@
 .sgga-library .sgga-upload .sgga-toolbar h3{font-size:16px}.sgga-library .sgga-fields{max-width:none;gap:16px}
 .sgga-queue-row{padding:12px 0;gap:8px 16px}.sgga-photos{grid-template-columns:repeat(auto-fill,minmax(min(100%,220px),1fr));gap:28px 20px}
 .sgga-photo-preview{height:230px}.sgga-photo-foot{gap:10px;margin-top:8px}.sgga-record{margin-top:6px}
-html[data-sgga-page] #nprogress .spinner{bottom:112px}
-html[data-sgga-page]{scroll-padding-bottom:120px}html[data-sgga-page] .sgga[data-sgga]{padding-bottom:120px}
+/* 原先这里给「页面底部固定条」留了 120px 空白（html[data-sgga-page] 的 padding/scroll-padding）。
+   导航收进页首后就没有任何地方再设置这个属性，规则一直空转；底部用户条也已在上面隐藏，一并删掉。 */
 .sgga-queue-row{grid-template-columns:minmax(0,1fr) auto auto}.sgga[data-sgga] .sgga-queue-remove{min-height:30px;font-size:12px;padding:3px 9px!important}
 .sgga-photo--new{outline:2px solid var(--ga-accent);outline-offset:8px}
 @media(max-width:600px){.sgga-queue-row{grid-template-columns:minmax(0,1fr) auto}.sgga-queue-row>span:first-child{grid-column:1/-1}}
@@ -136,6 +136,10 @@ html[data-sgga-page]{scroll-padding-bottom:120px}html[data-sgga-page] .sgga[data
 .sgga[data-sgga] .sgga-topbar .sgga-config{margin-left:auto;color:var(--ga-accent)}
 /* 后台主题在页脚渲染的「站点名 / 返回控制台」在工作台里是重复信息，页首已经给过 */
 body:has(.sgga-host) footer.typecho-foot{display:none!important}
+/* BooAdmin 等后台主题给插件面板页额外渲染的品牌蓝用户条（头像 / 用户组 / 登出 / 返回控制台）：
+   底色写在主题的 Tailwind 工具类里，读不到 --ga-*，与深色玻璃工作台冲突且与页首重复。
+   admin.js 的 hideAdminUserBar() 按「全宽 + 有底色 + 矮条」定位后打上这个标记。 */
+.sgga-boobar-hidden{display:none!important}
 .sgga-dialog-actions{flex-wrap:wrap;gap:12px}
 .sgga[data-sgga] .sgga-dialog-buttons{display:flex;gap:12px;margin-left:auto}
 .sgga[data-sgga] .sgga-link-danger{background:transparent!important;border:0!important;color:var(--ga-error)!important;padding:4px 0!important;min-height:0;font-size:13px}
