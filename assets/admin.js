@@ -8,6 +8,9 @@
     const states = {pending:'等待上传', uploading:'正在上传', uploaded:'已上传', failed:'上传失败', unknown:'结果待核查', removed:'已删除'};
     const notice = (text, tone = 'info', source = '') => { $('[data-alert]').textContent = text; $('[data-alert]').hidden = !text; $('[data-alert]').dataset.tone = tone; $('[data-alert]').dataset.source=source; };
     let albums = [], photos = [], page = 1, pages = 1, queue = [], busy = false, batchFinished = false, editing = null, refreshVersion = 0, fieldId = 0;
+    // 移动端是单列，30 条要滑 8 屏才够到分页；每页 12 条。白名单校验在服务端。
+    const mqNarrow = window.matchMedia('(max-width: 640px)');
+    const perPage = () => mqNarrow.matches ? 12 : 30;
     const dialog = $('[data-editor]');
     const url = op => { const u = new URL(root.dataset.endpoint, location.href); u.searchParams.set('op', op); if(root.dataset.csrf)u.searchParams.set('_',root.dataset.csrf); return u; };
     const body = values => { const f = new FormData(); Object.entries(values).forEach(([k,v]) => f.append(k,v)); if(root.dataset.csrf)f.set('_',root.dataset.csrf); return f; };
@@ -99,9 +102,9 @@
       const filter = $('[data-filter]').value;
       $('[data-photos]').setAttribute('aria-busy','true');
       try {
-        let data = await api('list', null, {page, album:filter});
+        let data = await api('list', null, {page, album:filter, per:perPage()});
         if (version !== refreshVersion) return;
-        if (page > data.pages) { page = data.pages; data = await api('list', null, {page, album:filter}); if (version !== refreshVersion) return; }
+        if (page > data.pages) { page = data.pages; data = await api('list', null, {page, album:filter, per:perPage()}); if (version !== refreshVersion) return; }
         albums = data.albums; photos = data.photos; pages = data.pages;
         options($('[data-upload-album]'), $('[data-upload-album]').value);
         options($('[data-filter]'), filter, true);
@@ -504,6 +507,15 @@
     $('[data-filter]').addEventListener('change',()=>{if($('[data-filter]').value)$('[data-upload-album]').value=$('[data-filter]').value;page=1;refresh();});
     $('[data-prev]').addEventListener('click',()=>{if(page>1){page--;refresh();}});
     $('[data-next]').addEventListener('click',()=>{if(page<pages){page++;refresh();}});
+    // 视图切换只改容器上的 data-view，卡片 DOM 不重建，因此不触发任何取数。
+    const viewKey='sgga-view', photosEl=$('[data-photos]');
+    const applyView=view=>{photosEl.dataset.view=view;root.querySelectorAll('[data-view]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.view===view)));};
+    let view='grid'; try{view=localStorage.getItem(viewKey)==='list'?'list':'grid';}catch(e){}
+    applyView(view);
+    root.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{view=b.dataset.view;applyView(view);try{localStorage.setItem(viewKey,view);}catch(e){}}));
+    // 跨过断点后每页条数变了，页码含义也变了，回第一页重取。
+    const onNarrow=()=>{page=1;refresh();};
+    if(mqNarrow.addEventListener)mqNarrow.addEventListener('change',onNarrow);else mqNarrow.addListener(onNarrow);
     // Suppress only accidental outer-form submission, preserving date/select and IME keys.
     root.addEventListener('keydown',event=>{if(event.key==='Enter' && !event.isComposing && event.target.matches('input[type=text],input[type=number]'))event.preventDefault();});
     root.closest('form')?.addEventListener('submit',event=>{if(root.contains(document.activeElement))event.preventDefault();});

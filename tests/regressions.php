@@ -19,6 +19,8 @@ check((int) $repo->get('photos', $current['id'])['finished_at'] === $finished, '
 $delivery = $config; $delivery['domain'] = 'https://images.example.com/photos';
 $urls = Settings::photoUrls($completed, $delivery);
 check(str_starts_with($urls['url'], $delivery['domain'] . '/gallery/') && str_contains($urls['thumb'], 'imageMogr2'), 'historical objects adopt the current CDN prefix without moving objects');
+check(str_contains($urls['thumb'], 'thumbnail/800x1000'), 'public gallery keeps the larger 800 bounding box');
+check(str_contains(Settings::photoUrls($completed, $delivery, [640, 640])['thumb'], 'thumbnail/640x640'), 'admin grid requests the smaller 640 bounding box');
 $delivery['bucket'] = 'elsewhere-1250000000';
 check(!str_starts_with(Settings::photoUrls($completed, $delivery)['url'], $delivery['domain']), 'switching bucket never redirects historical objects to another bucket');
 $a = $repo->get('albums', $current['album']); $repo->update('albums', $a['id'], ['cover' => str_repeat('f', 32)]);
@@ -32,6 +34,8 @@ $many = $repo->saveAlbum(['title' => '分页相册']);
 for ($i = 0; $i < 65; $i++) {
     $row = $completed; $row['id'] = Repository::id(); $row['album'] = $many['id']; $row['caption'] = '分页照片 ' . $i; $row['captured'] = '2026-11-01'; $row['created'] = 100000 + $i; $repo->insert('photos', $row);
 }
+$paged = $repo->photos(1, $many['id'], 12);
+check(count($paged['photos']) === 12 && $paged['pages'] === 6 && $repo->photos(1, $many['id'])['pages'] === 3, 'admin page size is honoured and the page count follows it');
 $catalog = $repo->catalog(); $first = $catalog->photos($many['id']); $second = $catalog->photos($many['id'], 2);
 check(count($first['photos']) === 60 && count($second['photos']) === 5 && $first['total'] === 65, 'public detail is bounded and later photos remain reachable');
 check(!array_intersect(array_column($first['photos'], 'id'), array_column($second['photos'], 'id')), 'public pages have stable ordering without duplicates');

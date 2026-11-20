@@ -154,3 +154,30 @@ body:has(.sgga-host) footer.typecho-foot{display:none!important}
 .sgga[data-sgga] .sgga-calendar-days button[data-today=true]{border-color:var(--ga-accent)!important;font-weight:600}
 .sgga[data-sgga] .sgga-calendar-days button[data-today=true][aria-pressed=true]{background:var(--ga-accent)!important;color:var(--ga-control)!important}
 @media(max-width:600px){.sgga-confirm-body{grid-template-columns:1fr;gap:14px}.sgga-confirm-preview img,.sgga-confirm-preview>span{width:100%;height:130px}.sgga[data-sgga] dialog[data-confirm]{padding:18px!important}}
+
+/* 展示方式切换：网格（默认）/ 列表。只切容器 data-view，DOM 不重建、不重新取数。 */
+.sgga[data-sgga] .sgga-view{display:inline-flex;border:1px solid var(--ga-border);border-radius:6px;overflow:hidden;flex-shrink:0}
+.sgga[data-sgga] .sgga-view button{border:0!important;border-radius:0!important;background:transparent!important;padding:6px 10px!important;min-height:0;font-size:12px;line-height:1.4;color:var(--ga-muted)!important}
+.sgga[data-sgga] .sgga-view button+button{border-left:1px solid var(--ga-border)!important}
+.sgga[data-sgga] .sgga-view button:hover{color:var(--ga-ink)!important;background:var(--ga-surface)!important}
+.sgga[data-sgga] .sgga-view button[aria-pressed=true]{background:var(--ga-accent)!important;color:var(--ga-control)!important;font-weight:600}
+/* 列表视图：缩略图收成方图 + 右侧单列信息，密度接近网盘列表；同一张 640 图两处复用，切换不重新下载。 */
+.sgga[data-sgga] .sgga-photos[data-view=list]{grid-template-columns:1fr;gap:0}
+.sgga-photos[data-view=list] .sgga-photo{display:grid;grid-template-columns:96px minmax(0,1fr);gap:14px;align-items:start;padding:12px 0;border-bottom:1px solid var(--ga-border)}
+.sgga-photos[data-view=list] .sgga-photo:first-child{padding-top:0}
+.sgga-photos[data-view=list] .sgga-photo-preview{height:72px;border-radius:4px;overflow:hidden}
+.sgga-photos[data-view=list] .sgga-photo-preview img{object-fit:cover}
+.sgga-photos[data-view=list] .sgga-photo-title{font-size:13px!important}
+.sgga-photos[data-view=list] .sgga-photo-foot{margin-top:6px;justify-content:flex-start}
+/* 网格视图靠 margin-right:auto 把操作推到卡片底部右侧；列表行很宽，那样会拉开一大片空白 */
+.sgga-photos[data-view=list] .sgga-status{margin-right:0;flex:0 0 auto}
+.sgga-photos[data-view=list] .sgga-record{margin-top:4px}
+@media(max-width:640px){.sgga-photos[data-view=list] .sgga-photo{grid-template-columns:64px minmax(0,1fr);gap:10px}.sgga-photos[data-view=list] .sgga-photo-preview{height:56px}}
+/* 窄屏下工具栏内层是 flex item，默认不收缩也不换行，加视图切换后会顶出可视区：
+   标题独占一行，控件行占满宽度再在其中换行 */
+@media(max-width:600px){
+  .sgga-toolbar-photos{flex-wrap:wrap}
+  .sgga-toolbar-photos>h3{width:100%;margin-bottom:2px}
+  .sgga-toolbar-photos>div{flex-wrap:wrap;gap:8px;max-width:100%;min-width:0}
+  .sgga[data-sgga] .sgga-view button{padding:5px 8px!important;font-size:11px}
+}

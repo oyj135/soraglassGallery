@@ -38,7 +38,7 @@ final class Admin
             <div class="sgga-upload-foot"><span data-selection>也可以将照片拖到这里</span><button type="button" class="sgga-primary" data-upload disabled>上传并展示</button></div>
             <details class="sgga-help"><summary>上传说明</summary><p>照片与相册默认公开；无相册时自动创建“光影收藏”。文件格式和大小遵循云存储能力。服务器当前单文件限制 <?php echo $e(ini_get('upload_max_filesize')); ?>，请求限制 <?php echo $e(ini_get('post_max_size')); ?>；较大照片需调整 PHP / Nginx 限制。</p></details>
           </div>
-          <div class="sgga-toolbar"><h3>照片 <small data-total></small></h3><div><select data-filter aria-label="筛选相册"></select><button type="button" data-refresh>刷新</button></div></div>
+          <div class="sgga-toolbar sgga-toolbar-photos"><h3>照片 <small data-total></small></h3><div><select data-filter aria-label="筛选相册"></select><div class="sgga-view" role="group" aria-label="照片展示方式"><button type="button" data-view="grid" aria-pressed="true">网格</button><button type="button" data-view="list" aria-pressed="false">列表</button></div><button type="button" data-refresh>刷新</button></div></div>
           <div class="sgga-photos" data-photos aria-busy="true"><p>正在读取照片…</p></div>
           <div class="sgga-pagination"><button type="button" data-prev>上一页</button><span data-page></span><button type="button" data-next>下一页</button></div>
           </div></div>

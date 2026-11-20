@@ -52,23 +52,24 @@ final class Repository
         return $this->rows($this->db->select()->from('table.sg_gallery_albums')->order('featured', Db::SORT_DESC)->order('sort')->order('created', Db::SORT_DESC));
     }
 
-    public function photos(int $page = 1, string $album = ''): array
+    public function photos(int $page = 1, string $album = '', int $perPage = 30): array
     {
+        $perPage = max(6, min(60, $perPage));
         $q = $this->db->select()->from('table.sg_gallery_photos')->where('state <> ?', 'removed');
         if ($album !== '') { $q->where('album = ?', $album); }
         $total = (int) $this->row((clone $q)->select('COUNT(*) AS n'))['n'];
-        $rows = $this->rows($q->order('created', Db::SORT_DESC)->order('id', Db::SORT_DESC)->page($page, 30));
+        $rows = $this->rows($q->order('created', Db::SORT_DESC)->order('id', Db::SORT_DESC)->page($page, $perPage));
         $tasks = [];
         if ($rows) { foreach ($this->rows($this->db->select()->from('table.sg_gallery_tasks')->where('photo IN ?', array_column($rows, 'id'))) as $task) { $tasks[$task['photo']] = $task; } }
         $delivery = Settings::read();
         foreach ($rows as &$photo) {
             $photo['tags'] = []; // Retired field retained only for DB compatibility.
             $photo['storage'] = json_decode($photo['storage'], true) ?: [];
-            $photo = Settings::photoUrls($photo, $delivery);
+            $photo = Settings::photoUrls($photo, $delivery, [640, 640]);
             $photo['task'] = $tasks[$photo['id']] ?? null;
             if ($photo['task'] && $photo['task']['state'] === 'uploading' && (int) $photo['task']['lease'] < time()) { $photo['task']['state'] = 'unknown'; }
         }
-        return ['photos' => $rows, 'total' => $total, 'page' => $page, 'pages' => max(1, (int) ceil($total / 30))];
+        return ['photos' => $rows, 'total' => $total, 'page' => $page, 'pages' => max(1, (int) ceil($total / $perPage))];
     }
 
     public function taskFor(string $photo): array

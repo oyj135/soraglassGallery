@@ -45,13 +45,14 @@ final class Settings
     }
 
     /** Object key + frozen target are canonical; delivery domain is mutable for that target. */
-    public static function photoUrls(array $photo, array $current): array
+    /** $size 是缩略图限界框：后台网格卡片约 310×230，640 足够 2 倍屏；前台列更宽，沿用默认 800。 */
+    public static function photoUrls(array $photo, array $current, array $size = [800, 1000]): array
     {
         $snapshot = is_array($photo['storage']) ? $photo['storage'] : (json_decode($photo['storage'], true) ?: []);
         if (!empty($photo['object_key']) && in_array($snapshot['provider'] ?? '', ['cos', 'oss'], true) && !empty($snapshot['bucket']) && !empty($snapshot['region'])) {
             $delivery = ($snapshot['profile'] ?? self::profile($snapshot)) === self::profile($current) ? $current : $snapshot;
             $photo['url'] = Registry::publicUrl($delivery, $photo['object_key']);
-            $photo['thumb'] = Registry::publicUrl($delivery, $photo['object_key'], !empty($photo['preview']) ? [800, 1000] : null);
+            $photo['thumb'] = Registry::publicUrl($delivery, $photo['object_key'], !empty($photo['preview']) ? $size : null);
         } else { $photo['thumb'] = $photo['thumb'] ?: $photo['url']; }
         return $photo;
     }

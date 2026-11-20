@@ -29,7 +29,9 @@ final class Action extends \Widget\Base implements \Widget\ActionInterface
                 case 'config-status': $data = Settings::status(); break;
                 case 'credential': $data = ['value' => Settings::credential((string) ($input['field'] ?? ''))]; break;
                 case 'list':
-                    $data = $repo->photos(max(1, (int) $this->request->get('page')), (string) ($this->request->get('album') ?? '')) + ['albums' => $repo->albums()];
+                    // 移动端单列每页 12 条；per 只接受白名单，避免被当作任意 LIMIT 使用。
+                    $per = (int) $this->request->get('per');
+                    $data = $repo->photos(max(1, (int) $this->request->get('page')), (string) ($this->request->get('album') ?? ''), in_array($per, [12, 24, 30], true) ? $per : 30) + ['albums' => $repo->albums()];
                     break;
                 case 'album': $data = $repo->saveAlbum($input); break;
                 case 'photo': $repo->savePhoto($input); break;
