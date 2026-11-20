@@ -16,11 +16,14 @@ final class Admin
         $console = \Typecho\Common::url('index.php', $options->adminUrl);
         $settings = Settings::read();
         $configured = $settings['bucket'] !== '' && $settings['region'] !== '';
+        // 固定档位便于一眼扫过；配置值不在档位内时补一项，保证下拉能显示当前默认。
+        $perOptions = [12, 24, 30, 48, 60];
+        if (!in_array((int) $settings['perPage'], $perOptions, true)) { $perOptions[] = (int) $settings['perPage']; sort($perOptions); }
         $e = static fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
         ob_start();
         ?>
         <link rel="stylesheet" href="<?php echo $e($assets . 'admin.css?v=' . hash_file('sha256', __DIR__ . '/assets/admin.css')); ?>">
-        <section class="sgga" data-sgga data-endpoint="<?php echo $e($url); ?>" data-csrf="<?php echo $e(\Widget\Security::alloc()->getToken('SoraglassGallery/admin')); ?>" data-upload-timeout="<?php echo (int) $settings['timeout']; ?>" data-webp-quality="<?php echo (int) $settings['webpQuality']; ?>">
+        <section class="sgga" data-sgga data-endpoint="<?php echo $e($url); ?>" data-csrf="<?php echo $e(\Widget\Security::alloc()->getToken('SoraglassGallery/admin')); ?>" data-upload-timeout="<?php echo (int) $settings['timeout']; ?>" data-webp-quality="<?php echo (int) $settings['webpQuality']; ?>" data-per-page="<?php echo (int) $settings['perPage']; ?>">
           <div class="sgga-topbar"><a class="sgga-back" href="<?php echo $e($console); ?>">← 返回控制台</a><span class="sgga-topbar-site"><?php echo $e($options->title); ?></span><a class="sgga-config" href="<?php echo $e($config); ?>">云存储设置 ↗</a></div>
           <div class="sgga-heading"><div><h2>光影画廊</h2><p>管理相册与照片，收藏每一次光影。</p></div></div>
           <?php if (!$configured): ?><p class="sgga-error">请先在插件配置中填写云存储与凭据，再上传照片。</p><?php endif; ?>
@@ -38,7 +41,7 @@ final class Admin
             <div class="sgga-upload-foot"><span data-selection>也可以将照片拖到这里</span><button type="button" data-pick>选择本机照片</button><button type="button" class="sgga-primary" data-upload disabled>上传并展示</button></div>
             <details class="sgga-help"><summary>上传说明</summary><p>照片与相册默认公开；无相册时自动创建“光影收藏”。文件格式和大小遵循云存储能力。服务器当前单文件限制 <?php echo $e(ini_get('upload_max_filesize')); ?>，请求限制 <?php echo $e(ini_get('post_max_size')); ?>；较大照片需调整 PHP / Nginx 限制。</p></details>
           </div>
-          <div class="sgga-toolbar sgga-toolbar-photos"><h3>照片 <small data-total></small></h3><div><select data-sort aria-label="照片排序"><option value="captured">按拍摄日期</option><option value="created">按上传时间</option><option value="name">按文件名</option></select><div class="sgga-view" role="group" aria-label="照片展示方式"><button type="button" data-view="grid" aria-pressed="true">网格</button><button type="button" data-view="list" aria-pressed="false">列表</button></div><button type="button" data-refresh>刷新</button></div></div>
+          <div class="sgga-toolbar sgga-toolbar-photos"><h3>照片 <small data-total></small></h3><div><select data-sort aria-label="照片排序"><option value="captured">按拍摄日期</option><option value="created">按上传时间</option><option value="name">按文件名</option></select><div class="sgga-view" role="group" aria-label="照片展示方式"><button type="button" data-view="grid" aria-pressed="true">网格</button><button type="button" data-view="list" aria-pressed="false">列表</button></div><select data-per-page aria-label="每页显示张数"><?php foreach ($perOptions as $n): ?><option value="<?php echo $n; ?>"<?php echo (int) $settings['perPage'] === $n ? ' selected' : ''; ?>><?php echo $n; ?> 张/页</option><?php endforeach; ?></select><button type="button" data-refresh>刷新</button></div></div>
           <div class="sgga-photos" data-photos aria-busy="true"><p>正在读取照片…</p></div>
           <div class="sgga-pagination"><button type="button" data-prev>上一页</button><span data-page></span><button type="button" data-next>下一页</button></div>
           </div></div>

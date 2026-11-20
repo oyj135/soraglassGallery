@@ -29,9 +29,9 @@ final class Action extends \Widget\Base implements \Widget\ActionInterface
                 case 'config-status': $data = Settings::status(); break;
                 case 'credential': $data = ['value' => Settings::credential((string) ($input['field'] ?? ''))]; break;
                 case 'list':
-                    // 移动端单列每页 12 条；per 只接受白名单，避免被当作任意 LIMIT 使用。
-                    $per = (int) $this->request->get('per');
-                    $data = $repo->photos(max(1, (int) $this->request->get('page')), (string) ($this->request->get('album') ?? ''), in_array($per, [12, 24, 30], true) ? $per : 30, (string) ($this->request->get('sort') ?? '')) + ['albums' => $repo->albums()];
+                    // per 来自后台下拉（6–60），缺失时回落到插件配置；这里再夹一次，避免被当作任意 LIMIT。
+                    $per = (int) $this->request->get('per') ?: (int) Settings::read()['perPage'];
+                    $data = $repo->photos(max(1, (int) $this->request->get('page')), (string) ($this->request->get('album') ?? ''), max(6, min(60, $per)), (string) ($this->request->get('sort') ?? '')) + ['albums' => $repo->albums()];
                     break;
                 case 'album': $data = $repo->saveAlbum($input); break;
                 case 'album-delete': $data = $repo->deleteAlbum((string) ($input['id'] ?? '')); break;

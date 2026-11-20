@@ -54,6 +54,7 @@ final class Plugin implements PluginInterface
             'prefix' => ['对象目录', '默认 gallery，按上传年月生成唯一路径。'],
             'timeout' => ['上传超时（秒）', '30–3600，默认 300；还需匹配 PHP / Nginx 配置。'],
             'webpQuality' => ['WebP 质量', '40–95，默认 75。上传前在浏览器里转 WebP 时使用；越低体积越小，70 以下暗部可能出色带，85 以上几乎等于不压缩。'],
+            'perPage' => ['每页照片数', '6–60，默认 24。后台照片列表每页张数，也会作为新建页面的初始值；在列表上方手动切换会覆盖此默认值。'],
         ];
         foreach ($labels as $key => [$label, $help]) {
             $form->addInput(new \Typecho\Widget\Helper\Form\Element\Text($key, null, Settings::defaults()[$key], $label, $help));

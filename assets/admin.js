@@ -10,9 +10,26 @@
     let albums = [], photos = [], page = 1, pages = 1, queue = [], busy = false, batchFinished = false, editing = null, refreshVersion = 0, fieldId = 0;
     // 相册筛选由左栏控制，右侧下拉改成排序；两者都不再共用一个 select。
     let filter = '', sortBy = 'captured';
-    // 移动端是单列，30 条要滑 8 屏才够到分页；每页 12 条。白名单校验在服务端。
     const mqNarrow = window.matchMedia('(max-width: 640px)');
-    const perPage = () => mqNarrow.matches ? 12 : 30;
+    // 每页张数由插件配置给默认值（6–60），窄屏在未手动选择前压到 12 条——单列 24 条要滑 6 屏才够到分页。
+    // 在列表上方下拉里选过一次就记住，此后完全按用户的选择走；服务端仍会再夹一次范围。
+    const configuredPer = Math.min(60, Math.max(6, Number(root.dataset.perPage) || 24));
+    const PER_KEY = 'sgga-per-page';
+    let chosenPer = 0;
+    // 记下当时生效的配置值：配置一改就作废手动选择，否则「改了配置却没反应」很难查。
+    try { const saved = JSON.parse(localStorage.getItem(PER_KEY) || '0'); if (saved && saved.per >= 6 && saved.per <= 60 && saved.cfg === configuredPer) chosenPer = saved.per; } catch (e) {}
+    const perPage = () => chosenPer || (mqNarrow.matches ? Math.min(12, configuredPer) : configuredPer);
+    // 下拉是唯一显示当前值的地方：配置改成非档位数字时补一项，保证不会显示错行。
+    function syncPer() {
+      const select = $('[data-per-page]'); if (!select) return;
+      const value = String(perPage());
+      if (![...select.options].some(o => o.value === value)) {
+        const option = el('option', `${value} 张/页`); option.value = value;
+        select.append(option);
+        [...select.options].sort((a, b) => Number(a.value) - Number(b.value)).forEach(o => select.append(o));
+      }
+      select.value = value;
+    }
     const dialog = $('[data-editor]');
     const url = op => { const u = new URL(root.dataset.endpoint, location.href); u.searchParams.set('op', op); if(root.dataset.csrf)u.searchParams.set('_',root.dataset.csrf); return u; };
     const body = values => { const f = new FormData(); Object.entries(values).forEach(([k,v]) => f.append(k,v)); if(root.dataset.csrf)f.set('_',root.dataset.csrf); return f; };
@@ -119,7 +136,7 @@
         $('[data-total]').textContent = `${data.total} 张`;
         $('[data-page]').textContent = `${page} / ${pages}`;
         $('[data-prev]').disabled = page <= 1; $('[data-next]').disabled = page >= pages;
-        $('.sgga-pagination').hidden=pages<=1;
+        $('.sgga-pagination').hidden=pages<=1; syncPer();
         $('[data-photos]').replaceChildren(...photos.map(photoRow));
         if (!photos.length) $('[data-photos]').append(el('p',filter ? '这本相册还没有照片。' : '还没有照片，选择本机照片即可上传。','sgga-empty'));
         queue.forEach(item => { const p = photos.find(p => p.task?.id === item.task?.task); if (p) updateItem(item, {state:effectiveState(p),photoState:p.state,published:!!+p.published,error:p.task?.error}); });
@@ -532,6 +549,13 @@
     $('[data-upload]').addEventListener('click',uploadQueue);
     $('[data-refresh]').addEventListener('click',()=>{notice('');refresh();});
     $('[data-sort]').addEventListener('change',()=>{sortBy=$('[data-sort]').value;page=1;refresh();});
+    // 每页张数改了，页码含义就变了，必须回第一页；非法值直接回显当前生效值。
+    $('[data-per-page]').addEventListener('change',event=>{
+      const value=Number(event.target.value);
+      if(!(value>=6&&value<=60)){syncPer();return;}
+      chosenPer=value;try{localStorage.setItem(PER_KEY,JSON.stringify({per:value,cfg:configuredPer}));}catch(e){}
+      page=1;refresh();
+    });
     $('[data-prev]').addEventListener('click',()=>{if(page>1){page--;refresh();}});
     $('[data-next]').addEventListener('click',()=>{if(page<pages){page++;refresh();}});
     // 视图切换只改容器上的 data-view，卡片 DOM 不重建，因此不触发任何取数。
@@ -540,8 +564,8 @@
     let view='grid'; try{view=localStorage.getItem(viewKey)==='list'?'list':'grid';}catch(e){}
     applyView(view);
     root.querySelectorAll('[data-view]').forEach(b=>b.addEventListener('click',()=>{view=b.dataset.view;applyView(view);try{localStorage.setItem(viewKey,view);}catch(e){}}));
-    // 跨过断点后每页条数变了，页码含义也变了，回第一页重取。
-    const onNarrow=()=>{page=1;refresh();};
+    // 跨过断点后每页条数变了，页码含义也变了，回第一页重取；手动选过张数就不再自动改动。
+    const onNarrow=()=>{syncPer();if(chosenPer)return;page=1;refresh();};
     if(mqNarrow.addEventListener)mqNarrow.addEventListener('change',onNarrow);else mqNarrow.addListener(onNarrow);
     // Suppress only accidental outer-form submission, preserving date/select and IME keys.
     root.addEventListener('keydown',event=>{if(event.key==='Enter' && !event.isComposing && event.target.matches('input[type=text],input[type=number]'))event.preventDefault();});

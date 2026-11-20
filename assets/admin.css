@@ -20,6 +20,8 @@
 .sgga-toolbar{display:flex;justify-content:space-between;gap:16px;align-items:center;margin:24px 0 16px}
 .sgga-toolbar>div{display:flex;gap:12px;align-items:center}.sgga-upload .sgga-toolbar>div{display:block}
 .sgga[data-sgga] .sgga-toolbar select{width:auto!important;max-width:220px;margin-top:0!important}.sgga-toolbar button{flex-shrink:0;white-space:nowrap!important}
+/* 每页张数只有四位数字，220px 会白占一行宽度，窄屏先把视图切换挤下去 */
+.sgga[data-sgga] .sgga-toolbar select[data-per-page]{max-width:108px}
 .sgga-toolbar small{font-weight:400;font-size:12px;margin-left:8px}
 .sgga-albums{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:24px}
 .sgga[data-sgga] .sgga-album{display:inline-flex;gap:12px;align-items:center;background:transparent!important;border-color:transparent!important;border-bottom-color:var(--ga-border)!important;border-radius:0;max-width:100%;padding:8px 4px!important;margin-right:20px;text-align:left}

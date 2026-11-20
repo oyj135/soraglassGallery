@@ -18,7 +18,7 @@ final class Settings
 
     public static function defaults(): array
     {
-        return ['provider' => 'cos', 'bucket' => '', 'region' => '', 'endpoint' => '', 'domain' => '', 'keyId' => '', 'keySecret' => '', 'prefix' => 'gallery', 'timeout' => '300', 'webpQuality' => '75'];
+        return ['provider' => 'cos', 'bucket' => '', 'region' => '', 'endpoint' => '', 'domain' => '', 'keyId' => '', 'keySecret' => '', 'prefix' => 'gallery', 'timeout' => '300', 'webpQuality' => '75', 'perPage' => '24'];
     }
 
     public static function cloud(): array
@@ -133,6 +133,8 @@ final class Settings
         if ((int) ($settings['timeout'] ?? 0) < 30 || (int) $settings['timeout'] > 3600) { throw new \InvalidArgumentException('上传超时应在 30–3600 秒之间'); }
         // 40 以下暗部开始出色带、边缘发糊；95 以上几乎等于不压缩，没有意义。
         if ((int) ($settings['webpQuality'] ?? 0) < 40 || (int) $settings['webpQuality'] > 95) { throw new \InvalidArgumentException('WebP 质量应在 40–95 之间（推荐 75）'); }
+        // 每页条数同时是列表分页的边界：低于 6 一屏几乎全是翻页按钮，高于 60 单页要发几十个缩略图请求。
+        if ((int) ($settings['perPage'] ?? 0) < 6 || (int) $settings['perPage'] > 60) { throw new \InvalidArgumentException('每页照片数应在 6–60 之间（推荐 24）'); }
     }
 
     private static function encryptionKey(): string

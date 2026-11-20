@@ -163,6 +163,12 @@ try {
     check(Settings::read() === $before, 'invalid URL leaves all old settings and credentials intact');
     $db->query($db->update('table.options')->rows(['value'=>json_encode($before + ['extra'=>'invalid legacy JSON', 'thumbnail'=>'legacy-process'])])->where('name = ?', 'plugin:SoraglassGallery'));
     check(!isset(Settings::cloud()['extra'], Settings::cloud()['thumbnail']), 'retired options ignored even before save');
+    // 每页张数：默认 24，越界拒绝且不写坏已有配置，合法值可持久化。
+    check(Settings::defaults()['perPage'] === '24', 'pagination defaults to 24 per page');
+    fails(fn()=>Settings::save(array_merge($masked, ['perPage'=>'5'])), '每页照片数');
+    fails(fn()=>Settings::save(array_merge($masked, ['perPage'=>'61'])), '每页照片数');
+    Settings::save(array_merge($masked, ['perPage'=>'36']));
+    check(Settings::read()['perPage'] === '36', 'page size persists for the admin list');
     Settings::save($masked);
     check(!isset(Settings::read(true)['extra']) && !isset(Settings::read(true)['thumbnail']), 'saving removes retired options from persisted configuration');
     Settings::save(array_merge($masked, ['provider'=>'oss','bucket'=>'photos','region'=>'cn-hangzhou']));
