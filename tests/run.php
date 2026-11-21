@@ -7,6 +7,7 @@ define('__TYPECHO_THEME_DIR__', '/usr/themes');
 require_once $typecho . '/var/Typecho/Common.php';
 require_once dirname(__DIR__) . '/bootstrap.php';
 
+use TypechoPlugin\SoraglassGallery\Attachments;
 use TypechoPlugin\SoraglassGallery\Removal;
 use TypechoPlugin\SoraglassGallery\Repository;
 use TypechoPlugin\SoraglassGallery\Settings;
@@ -171,12 +172,28 @@ try {
     check(Settings::read()['perPage'] === '36', 'page size persists for the admin list');
     Settings::save($masked);
     check(!isset(Settings::read(true)['extra']) && !isset(Settings::read(true)['thumbnail']), 'saving removes retired options from persisted configuration');
+    // 附件链服务端转 WebP：文章附件与主题设置页的壁纸上传都走 /action/upload → store()。
+    $jpeg = tempnam(sys_get_temp_dir(), 'sg-jpeg-');
+    $noise = imagecreatetruecolor(520, 520);
+    for ($y = 0; $y < 520; $y += 1) { for ($x = 0; $x < 520; $x += 1) { imagesetpixel($noise, $x, $y, mt_rand(0, 0xffffff)); } }
+    imagejpeg($noise, $jpeg, 95); imagedestroy($noise);
+    $jpegBytes = filesize($jpeg);
+    $article = Attachments::store(['name' => '海边.jpg', 'tmp_name' => $jpeg], Settings::read(), new FakeStorage());
+    check($article['type'] === 'webp' && $article['mime'] === 'image/webp' && str_ends_with($article['path'], '.webp'), 'image attachments are re-encoded to webp on the server');
+    check($article['size'] < $jpegBytes && $article['name'] === '海边.webp', 'webp output is smaller and keeps the original stem');
+    $plain = Attachments::store(['name' => 'notes.txt', 'bytes' => str_repeat('x', 70000)], Settings::read(), new FakeStorage());
+    check($plain['type'] === 'txt' && $plain['name'] === 'notes.txt' && $plain['size'] === 70000, 'non-image attachments keep their original bytes and name');
+    $tiny = Attachments::store(['name' => 'icon.png', 'bytes' => base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aD1sAAAAASUVORK5CYII=')], Settings::read(), new FakeStorage());
+    check($tiny['type'] === 'png', 'images below the 64KB floor are left alone');
+    $replace = new FakeStorage();
+    Attachments::store(['name' => '海边.jpg', 'tmp_name' => $jpeg], Settings::read(), $replace, 'article/2026/11/old.jpg');
+    check(isset($replace->objects['article/2026/11/old.webp']) && !isset($replace->objects['article/2026/11/old.jpg']), 'replacing an attachment moves the object to .webp and drops the stale one');
     Settings::save(array_merge($masked, ['provider'=>'oss','bucket'=>'photos','region'=>'cn-hangzhou']));
     check(Settings::read()['keyId'] === '' && Settings::read()['keySecret'] === '', 'switching provider does not reuse previous credentials');
     require __DIR__ . '/cos-protocol.php';
     require __DIR__ . '/regressions.php';
     echo "PASS: $count assertions (isolated Typecho SQLite, fake cloud and real COS SDK with simulated HTTP; no live cloud requests)\n";
 } finally {
-    foreach ([$file, $photoFile ?? '', $wrong ?? ''] as $tmp) { if ($tmp && is_file($tmp)) { @unlink($tmp); } }
+    foreach ([$file, $photoFile ?? '', $wrong ?? '', $jpeg ?? ''] as $tmp) { if ($tmp && is_file($tmp)) { @unlink($tmp); } }
     putenv('SG_GALLERY_ENCRYPTION_KEY');
 }
